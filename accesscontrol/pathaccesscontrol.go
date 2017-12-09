@@ -301,7 +301,7 @@ func normalizeFilterDef(s string) (pattern, options string, isExceptionFilter bo
 
 	//Break the filter def into two pieces. The first half is the actual
 	//filter path, and the second part is the filter options.
-	dollarSignIndex := strings.Index(s, "$")
+	dollarSignIndex := strings.LastIndex(s, "$")
 
 	pattern = s
 	options = ""
@@ -473,7 +473,7 @@ func (abpFilter *PathAccessControl) parseFilter(s string, filterEntry *abpFilter
 func (filter *abpFilterEntry) compileRegex(s string) (isRegexFilter bool, err error) {
 
 	matchCase := filter.matchCase
-
+	
 	if len(s) > 1 && s[0] == '/' && s[len(s)-1] == '/' {
 		filter.regex, err = regexp.Compile(s[1 : len(s)-1])
 		isRegexFilter = true
