@@ -1,0 +1,29 @@
+Grammar!
+
+
+Syntax: listen (http|https|redirect) (address) (port)
+Ex: listen https 10.0.0.12 443
+Ex: listen redirect [2001:db8::1:0:0:1] 1009
+
+Syntax: httpscert (key path) (cert path)
+Ex: httpscert "/var/lib/root.key" "/var/lib/root.cert"
+
+Syntax: hostacl (path)
+Ex: hostacl "/var/lib/hostrules.txt"
+
+Syntax: pathacl (path)
+Ex: pathacl "/var/lib/easylists.txt"
+
+Syntax: allowlocalhost (on|off)
+Ex: allowlocalhost off
+
+Syntax: loopDetection (on|off)
+Ex: loopdetection on
+
+Syntax: staticsite (host) (directory)
+Ex: staticsite "adsieve" "/var/www"
+
+Syntax: staticsitecert (host) (key path) (cert path)
+
+Syntax: # <Anything>
+Ex: #This is a comment
