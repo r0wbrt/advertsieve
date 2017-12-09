@@ -116,7 +116,7 @@ func main() {
 		log.Fatal(configuration.Err)
 	}
 	
-	log.Print("%s is fully operational.", CONST_BRAND_NAME)
+	log.Printf("%s is fully operational.", CONST_BRAND_NAME)
 	
 	//Block forever
 	select{}
@@ -342,7 +342,10 @@ func (configuration *AdvertSieveConfig) SpawnHttpListeners(proxyServer *httpserv
 		var server *http.Server = GetStandardHttpServerConfig()
 		server.Handler = proxyServer
 		server.Addr = configuration.HttpServerAddresses[i]
-		go log.Fatal(server.ListenAndServe())
+		go func() {
+			ret := server.ListenAndServe()
+			log.Fatal(ret)
+		}()
 	}
 }
 
@@ -357,7 +360,11 @@ func (configuration *AdvertSieveConfig) SpawnHttpsListeners(proxyServer *httpser
 		server.TLSConfig = tlsConfig
 		server.Handler = proxyServer
 		server.Addr = configuration.HttpsServerAddresses[i]
-		go log.Fatal(server.ListenAndServeTLS("",""))
+		
+		go func() {
+			ret := server.ListenAndServeTLS("","")
+			log.Fatal(ret)
+		}()
 	}
 }
 
