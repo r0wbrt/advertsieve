@@ -136,15 +136,13 @@ func (abpFilter *PathAccessControl) EvaluateRequest(host string, path string, th
 			return
 		}
 	}
-	
+
 	//Run the exception filters in the AC trie
 	result, err := abpFilter.exceptionFilters.abpACFilterFind([]rune(strings.ToUpper(path)), &evaluator)
 
-	
 	if err != nil {
 		return
 	}
-
 
 	if result {
 		return
@@ -174,7 +172,7 @@ func (abpFilter *PathAccessControl) EvaluateRequest(host string, path string, th
 }
 
 func (pathInfo *abpRuleEvaluator) evaluateABRule(filterEntry *abpFilterEntry) bool {
-	
+
 	//Do not run the same rule more then once
 	_, ok := pathInfo.rulesEvaluated[filterEntry.uid]
 	if ok {
@@ -206,7 +204,7 @@ func (pathInfo *abpRuleEvaluator) evaluateABRule(filterEntry *abpFilterEntry) bo
 	if filterEntry.typesToApplyTo != ContentNullField && filterEntry.typesToApplyTo&pathInfo.requestType == ContentNullField {
 		return false
 	}
-	
+
 	//Check to see if this filter should be applied onto this domain
 	hostCheckResult := filterEntry.hosts.checkHostStatus(pathInfo.host)
 
@@ -215,7 +213,7 @@ func (pathInfo *abpRuleEvaluator) evaluateABRule(filterEntry *abpFilterEntry) bo
 	} else if !filterEntry.applyToHostsEmpty && hostCheckResult != -1 {
 		return false
 	}
-	
+
 	//Finally perform the regex comparison and return that result
 	return filterEntry.regex.MatchString(pathInfo.path)
 }
@@ -246,6 +244,8 @@ func (abpFilter *PathAccessControl) AddFilter(def string) (err error) {
 
 	filterEntry := new(abpFilterEntry)
 	filterEntry.uid = abpFilter.currentIndex
+	filterEntry.applyToHostsEmpty = true
+	filterEntry.hosts = NewHostAccessControl()
 	abpFilter.currentIndex += 1
 
 	//Load Options into the filter
@@ -257,8 +257,6 @@ func (abpFilter *PathAccessControl) AddFilter(def string) (err error) {
 	//structure
 	err = abpFilter.parseFilter(pattern, filterEntry, isExceptionFilter)
 
-	filterEntry.hosts = NewHostAccessControl()
-	filterEntry.applyToHostsEmpty = true
 	return
 }
 
@@ -309,8 +307,8 @@ func normalizeFilterDef(s string) (pattern, options string, isExceptionFilter bo
 	if dollarSignIndex != -1 {
 		pattern = s[:dollarSignIndex]
 
-		if dollarSignIndex < len(pattern) {
-			options = pattern[dollarSignIndex+1:]
+		if dollarSignIndex < len(s) {
+			options = s[dollarSignIndex+1:]
 		}
 	}
 
@@ -393,6 +391,7 @@ func (filterEntry *abpFilterEntry) parseOptions(options string, isExceptionFilte
 		case "other":
 			field = field | ContentTypeOther
 		default:
+
 			if !isExceptionFilter {
 				return false
 			}
@@ -473,7 +472,7 @@ func (abpFilter *PathAccessControl) parseFilter(s string, filterEntry *abpFilter
 func (filter *abpFilterEntry) compileRegex(s string) (isRegexFilter bool, err error) {
 
 	matchCase := filter.matchCase
-	
+
 	if len(s) > 1 && s[0] == '/' && s[len(s)-1] == '/' {
 		filter.regex, err = regexp.Compile(s[1 : len(s)-1])
 		isRegexFilter = true
