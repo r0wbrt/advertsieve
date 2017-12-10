@@ -213,6 +213,10 @@ func mimeStringToType(mimeType string) int64 {
 
 func PassiveAggressiveBlockRequest(w http.ResponseWriter) {
 
+	for k := range w.Header() {
+		w.Header().Del(k)
+	}
+	
 	//Do not ask again for 7 days.
 	w.Header().Set("Cache-Control", "604800")
 	w.WriteHeader(http.StatusNoContent)
