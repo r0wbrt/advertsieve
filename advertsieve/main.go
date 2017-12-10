@@ -22,6 +22,7 @@ type VirtualHost struct {
 	KeyPath   string
 	CertPath  string
 	Directory string
+	HasCustomCert bool
 }
 
 type AdvertSieveConfig struct {
@@ -208,14 +209,8 @@ func (configuration *AdvertSieveConfig) LoadTlsSettings() (tlsConfig *tls.Config
 	tlsConfig.CipherSuites = []uint16 {
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
 		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
 	}
 	
 	return tlsConfig
@@ -230,6 +225,11 @@ func (configuration *AdvertSieveConfig) GetVHostCerts() map[string]*tls.Certific
 	var certMap map[string]*tls.Certificate = make(map[string]*tls.Certificate)
 	
 	for k, v := range configuration.VirtualHosts {
+		
+		if !v.HasCustomCert {
+			continue
+		}
+		
 		cert, err := tls.LoadX509KeyPair(v.CertPath, v.KeyPath)
 		
 		if err != nil {
@@ -454,6 +454,7 @@ func LoadConfiguration(path string) (configuration *AdvertSieveConfig) {
 				virtualHost.Host = site
 				virtualHost.CertPath = cert
 				virtualHost.KeyPath = key
+				virtualHost.HasCustomCert = true
 
 				configuration.VirtualHosts[site] = virtualHost
 
