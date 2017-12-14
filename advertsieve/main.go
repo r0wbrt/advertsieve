@@ -68,7 +68,7 @@ func main() {
 	configuration = LoadConfiguration(config_path)
 	
 	if configuration.Err == nil {
-		if len(configuration.HttpServerAddresses) <= 0 && len(configuration.HttpsServerAddresses) <= 0 {
+		if len(configuration.HttpServerAddresses) <= 0 && len(configuration.HttpsServerAddresses) <= 0 && len(configuration.RedirectServerAddresses) <= 0 {
 			configuration.Err = errors.New("No addresses specified for this server to listen on")
 		}
 	}
@@ -103,12 +103,13 @@ func main() {
 	postAccessControlHook.PathAccessControl = pathAcl
 	proxyServer.AddHook(postAccessControlHook.Hook, httpserver.BeforeIssueDownstreamResponse)
 	
-	if len(configuration.HttpsServerAddresses) > 0 {
+	if len(configuration.HttpsServerAddresses) > 0 || len(configuration.RedirectServerAddresses) > 0{
 		var tlsConfig *tls.Config = configuration.LoadTlsSettings()
 		configuration.SpawnHttpsListeners(proxyServer, tlsConfig)
+		configuration.SpawnRedirectListeners(proxyServer, tlsConfig)
 	}
-	configuration.SpawnHttpListeners(proxyServer)
 	
+	configuration.SpawnHttpListeners(proxyServer)
 	
 	//Configuration object stores the first error. Any subsequent calls 
 	//to a configuration function does nothing. This means this err object
@@ -368,6 +369,37 @@ func (configuration *AdvertSieveConfig) SpawnHttpsListeners(proxyServer *httpser
 	}
 }
 
+func (configuration *AdvertSieveConfig) SpawnRedirectListeners(proxyServer *httpserver.ProxyServer, tlsConfig *tls.Config) {
+	
+	if configuration.InErrorState() {
+		return
+	}
+	
+	for i := 0; i < len(configuration.RedirectServerAddresses); i++ {
+		var serverTLS *http.Server = GetStandardHttpServerConfig()
+		
+		var bridge *httpserver.ConnectLoopBackBridge = httpserver.NewConnectLoopBackBridge(proxyServer, configuration.RedirectServerAddresses[i])
+		
+		serverTLS.TLSConfig = tlsConfig
+		serverTLS.Handler = proxyServer
+		serverTLS.Addr = configuration.RedirectServerAddresses[i]
+		
+		go func() {
+			ret := serverTLS.ServeTLS(bridge, "", "")
+			log.Fatal(ret)
+		}()
+		
+		var server *http.Server = GetStandardHttpServerConfig()
+		server.Handler = bridge
+		server.Addr = configuration.RedirectServerAddresses[i]
+		
+		go func() {
+			ret := server.ListenAndServe()
+			log.Fatal(ret)
+		}()
+	}
+}
+
 func LoadConfiguration(path string) (configuration *AdvertSieveConfig) {
 	
 	var grammar *config.Grammar = config.GetProxyGrammar()
@@ -408,8 +440,8 @@ func LoadConfiguration(path string) (configuration *AdvertSieveConfig) {
 					configuration.HttpServerAddresses = append(configuration.HttpServerAddresses, string(vals[1].([]rune)))
 				case config.ServerTypeHttps:
 					configuration.HttpsServerAddresses = append(configuration.HttpsServerAddresses, string(vals[1].([]rune)))
-				default:
-					continue
+				case config.ServerTypeRedirect:
+					configuration.RedirectServerAddresses = append(configuration.RedirectServerAddresses, string(vals[1].([]rune)))
 				}
 
 			case config.HttpsCertStatement.Name:
