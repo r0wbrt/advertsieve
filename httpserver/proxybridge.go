@@ -32,27 +32,31 @@ type ConnectLoopBackBridge struct {
 	//interface to work correctly.
 	Address string
 	
-	//Channel connections will be sent over
+	//Channel connections will be sent over.
 	connChannel chan net.Conn
 	
 	//A channel which when closed means the connections are no longer being
 	//accepted.
 	done chan interface{}
 	
+	//Closing this channel signals that the listener is no longer accepting
+	//connections.
 	channelClosed bool
 	
+	//Mutex uses to control access to Close.
 	mutex sync.Mutex
 	
+	//Logger used to generate messages.
 	Logger *log.Logger
 }
 
-func NewConnectionLoopBackBridge(handler http.Handler, address string) (bridge *ConnectLoopBackBridge) {
+func NewConnectLoopBackBridge(handler http.Handler, address string) (bridge *ConnectLoopBackBridge) {
 	
 	bridge = new(ConnectLoopBackBridge)
 	
 	bridge.done = make(chan interface{})
 	bridge.connChannel = make(chan net.Conn)
-	bridge.Logger = log.New(os.Stderr, "Connection Loopback Bridge ", log.Lmicroseconds|log.Ldate|log.Lshortfile)
+	bridge.Logger = log.New(os.Stderr, "Connect Loopback Bridge ", log.Lmicroseconds|log.Ldate|log.Lshortfile)
 	bridge.Address = address
 	bridge.Handler = handler
 	
@@ -77,7 +81,7 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 		if !ok {
 			
 			http.Error(w, "This implementation does not support the CONNECT method.", http.StatusNotImplemented)
-			bridge.Logger.Print("implementation does not support connection hijacking, CONNECT request aborted")
+			bridge.Logger.Print("Implementation does not support connection hijacking, CONNECT request aborted")
 			return
 		}
 
@@ -92,7 +96,7 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 		select {
 			case _ = <- bridge.done:
 				//If we come here for any reason, this channel has closed.
-					conn.Close()
+				conn.Close()
 			case bridge.connChannel <- conn:
 		}
 		
@@ -128,3 +132,19 @@ func (bridge *ConnectLoopBackBridge) Close() error {
 	return nil
 }
 
+type proxyBridgeAdd struct {
+	addr string
+}
+
+
+func (addr proxyBridgeAdd) Network() string {
+	return "tcp"
+}
+
+func (addr proxyBridgeAdd) String() string {
+	return addr.addr
+}
+
+func (bridge *ConnectLoopBackBridge) Addr() net.Addr {
+	return proxyBridgeAdd{addr: bridge.Address}
+}
