@@ -97,7 +97,7 @@ func main() {
 	
 	//Post access hook does path based and type based filtering. Want this 
 	//to run post issue request since then we will have access to the remote
-	//server http replay which is full of useful information like the type
+	//server http response which is full of useful information like the type
 	//of resource this request was for.
 	var postAccessControlHook advertsieve.AccessControlServerHook
 	postAccessControlHook.PathAccessControl = pathAcl
@@ -142,7 +142,9 @@ func (configuration *AdvertSieveConfig) VhostHook(context *httpserver.ProxyChain
 }
 
 func GetStandardHttpServerConfig() *http.Server {
-	return new(http.Server)
+	var server *http.Server = new(http.Server)
+	server.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler))
+	return server
 }
 
 func (configuration *AdvertSieveConfig) GenServerCertificate(hello *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
