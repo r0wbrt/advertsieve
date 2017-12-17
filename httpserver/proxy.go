@@ -82,6 +82,9 @@ type ProxyServer struct {
 	//Max number of time to spend attempting to connect to upstream server
 	MaxTimeTryingToConnect time.Duration
 
+	//Amount of time to wait before retrying a failed request.
+	RequestRetryTimeout time.Duration
+	
 	//Chain of handlers to call before each proxied request.
 	beforeIssueUpstreamRequest []ProxyHook
 
@@ -107,6 +110,7 @@ func NewProxyServer() (proxy *ProxyServer) {
 
 	proxy.MaxNumberOfConnectAttempts = 3
 	proxy.MaxTimeTryingToConnect = time.Duration(6)*time.Second
+	proxy.RequestRetryTimeout = time.Duration(1000)*time.Millisecond
 	proxy.Client = new(http.Client)
 	proxy.Client.CheckRedirect = func(req *http.Request, via []*http.Request) (err error) {
 		err = http.ErrUseLastResponse
@@ -309,10 +313,12 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 
 	var connHijacked bool
 	connHijacked, err = RunHandlerChain(proxy.beforeIssueDownstreamResponse, context)
+	if connHijacked {
+		return
+	}
+	
 	if err != nil {
 		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
-	}
-	if connHijacked {
 		return
 	}
 
@@ -353,7 +359,7 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 			return
 		}
 		
-		
+		time.Sleep(proxy.RequestRetryTimeout)
 	}
 	
 }
@@ -479,6 +485,7 @@ func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress str
 			return
 		}
 		
+		time.Sleep(proxy.RequestRetryTimeout)
 		
 	}
 	
