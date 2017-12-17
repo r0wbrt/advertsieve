@@ -394,7 +394,7 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 		return
 	}
 
-	fromRemoteServerConn, err := net.Dial("tcp", remoteAddress)
+	fromRemoteServerConn, err := proxy.attemptTcpConnectionToUpstreamServer(remoteAddress)
 
 	if err != nil {
 		proxy.HttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
@@ -442,6 +442,44 @@ func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGrou
 	if err != nil {
 		proxy.MsgLogger.Println(err.Error())
 	}
+}
+
+func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress string) (conn net.Conn, err error) {
+	
+	var counter int = 0
+	var start time.Time = time.Now()
+	
+	for {
+		
+		counter += 1
+		
+		conn, err = net.Dial("tcp", remoteAddress)
+		if err != nil {
+			return
+		}
+		
+		now := time.Now()
+		
+		if proxy.MaxTimeTryingToConnect != 0 && now.Sub(start) >= proxy.MaxTimeTryingToConnect {
+			return
+		}
+		
+		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
+			return
+		}
+		
+		netErr, ok := err.(*net.OpError)
+		if !ok {
+			return
+		}
+		
+		if !netErr.Temporary() {
+			return
+		}
+		
+		
+	}
+	
 }
 
 //*****************************************************************************
