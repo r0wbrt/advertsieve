@@ -92,7 +92,7 @@ type ProxyServer struct {
 	mutex sync.RWMutex
 
 	//HTTP client used to request data from remote servers
-	client *http.Client
+	Client *http.Client
 }
 
 //*****************************************************************************
@@ -107,8 +107,8 @@ func NewProxyServer() (proxy *ProxyServer) {
 
 	proxy.MaxNumberOfConnectAttempts = 3
 	proxy.MaxTimeTryingToConnect = time.Duration(6)*time.Second
-	proxy.client = new(http.Client)
-	proxy.client.CheckRedirect = func(req *http.Request, via []*http.Request) (err error) {
+	proxy.Client = new(http.Client)
+	proxy.Client.CheckRedirect = func(req *http.Request, via []*http.Request) (err error) {
 		err = http.ErrUseLastResponse
 		return
 	}
@@ -329,7 +329,7 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 		
 		counter += 1
 		
-		rresp, err = proxy.client.Do(rsr)
+		rresp, err = proxy.Client.Do(rsr)
 		if err != nil {
 			return
 		}
