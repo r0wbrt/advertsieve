@@ -194,11 +194,13 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Run Before Request hooks
 	var connHijacked bool
 	connHijacked, err = RunHandlerChain(proxy.beforeIssueUpstreamRequest, &context)
-	if err != nil {
-		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
-	}
+	
 	if connHijacked {
 		return
+	}
+	
+	if err != nil {
+		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
 	}
 
 	if rsr.Method == http.MethodConnect {
