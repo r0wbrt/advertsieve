@@ -28,6 +28,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
+	"net/url"
 )
 
 type ProxyHookType int
@@ -56,6 +58,7 @@ type ProxyChainContext struct {
 
 	//Proxy instance
 	Proxy *ProxyServer
+	
 }
 
 type ProxyHook func(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error)
@@ -72,6 +75,12 @@ type ProxyServer struct {
 	//Logger used to handle messages generated during the operation of the proxy
 	//server.
 	MsgLogger *log.Logger
+	
+	//Maximum number of attempts to contact upstream server
+	MaxNumberOfConnectAttempts int
+	
+	//Max number of time to spend attempting to connect to upstream server
+	MaxTimeTryingToConnect time.Duration
 
 	//Chain of handlers to call before each proxied request.
 	beforeIssueUpstreamRequest []ProxyHook
@@ -96,6 +105,8 @@ type ProxyServer struct {
 func NewProxyServer() (proxy *ProxyServer) {
 	proxy = new(ProxyServer)
 
+	proxy.MaxNumberOfConnectAttempts = 3
+	proxy.MaxTimeTryingToConnect = time.Duration(6)*time.Second
 	proxy.client = new(http.Client)
 	proxy.client.CheckRedirect = func(req *http.Request, via []*http.Request) (err error) {
 		err = http.ErrUseLastResponse
@@ -277,7 +288,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 		rsr.Body = nil
 	}
 
-	rresp, err := proxy.client.Do(rsr)
+	rresp, err := proxy.attemptHttpConnectionToUpstreamServer(rsr)
 
 	if err != nil {
 		proxy.HttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
@@ -305,6 +316,44 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 
 	w.WriteHeader(rresp.StatusCode)
 	io.Copy(w, rresp.Body)
+}
+
+func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Request) (rresp *http.Response, err error) {
+	
+	var counter int = 0
+	var start time.Time = time.Now()
+	
+	for {
+		
+		counter += 1
+		
+		rresp, err = proxy.client.Do(rsr)
+		if err != nil {
+			return
+		}
+		
+		now := time.Now()
+		
+		if proxy.MaxTimeTryingToConnect != 0 && now.Sub(start) >= proxy.MaxTimeTryingToConnect {
+			return
+		}
+		
+		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
+			return
+		}
+		
+		urlErr, ok := err.(*url.Error)
+		if !ok {
+			return
+		}
+		
+		if !urlErr.Temporary() {
+			return
+		}
+		
+		
+	}
+	
 }
 
 //*****************************************************************************
