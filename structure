@@ -1,8 +1,0 @@
-advertsieve/ 		  		* Main Package, builds executable server
-advertsieve/services  		* Various servers and clients
-advertsieve/config 	  		* configuration parser
-advertsieve/agent     	    * Executable to download and parse abp lists and hosts files
-advertsieve/contentcontrol  * Tools to enact content policy
-advertsieve/advertsieve 	* Call in point for external code to run advertsieve daemon
-advertsieve/crypt 			* Various code for TLS functionality
-
