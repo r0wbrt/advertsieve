@@ -13,7 +13,7 @@
  *  limitations under the License.
  */
 
-package httpserver
+package tlsutils
 
 import (
 	"bytes"

@@ -17,7 +17,7 @@
 //request and response. The package also provides basic functionality for
 //implementing a https interception proxy which generates https certs on the fly
 //for each request via TLSCertGen.
-package httpserver
+package services
 
 import (
 	"bytes"
@@ -25,11 +25,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
-	"net/url"
 )
 
 type ProxyHookType int
@@ -58,7 +58,6 @@ type ProxyChainContext struct {
 
 	//Proxy instance
 	Proxy *ProxyServer
-	
 }
 
 type ProxyHook func(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error)
@@ -75,16 +74,16 @@ type ProxyServer struct {
 	//Logger used to handle messages generated during the operation of the proxy
 	//server.
 	MsgLogger *log.Logger
-	
+
 	//Maximum number of attempts to contact upstream server
 	MaxNumberOfConnectAttempts int
-	
+
 	//Max number of time to spend attempting to connect to upstream server
 	MaxTimeTryingToConnect time.Duration
 
 	//Amount of time to wait before retrying a failed request.
 	RequestRetryTimeout time.Duration
-	
+
 	//Chain of handlers to call before each proxied request.
 	beforeIssueUpstreamRequest []ProxyHook
 
@@ -108,16 +107,16 @@ type ProxyServer struct {
 func NewProxyServer() (proxy *ProxyServer) {
 	proxy = new(ProxyServer)
 
-	proxy.MaxNumberOfConnectAttempts = 3
-	proxy.MaxTimeTryingToConnect = time.Duration(6)*time.Second
-	proxy.RequestRetryTimeout = time.Duration(1000)*time.Millisecond
+	proxy.MaxNumberOfConnectAttempts = 5
+	proxy.MaxTimeTryingToConnect = time.Duration(12) * time.Second
+	proxy.RequestRetryTimeout = time.Duration(2) * time.Second
 	proxy.Client = new(http.Client)
 	proxy.Client.CheckRedirect = func(req *http.Request, via []*http.Request) (err error) {
 		err = http.ErrUseLastResponse
 		return
 	}
 
-	proxy.MsgLogger = log.New(os.Stderr, "Proxy ", log.Lmicroseconds|log.Ldate|log.Lshortfile)
+	proxy.MsgLogger = log.New(os.Stderr, "Proxy ", log.Lmicroseconds|log.Ldate)
 
 	return
 }
@@ -198,13 +197,14 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Run Before Request hooks
 	var connHijacked bool
 	connHijacked, err = RunHandlerChain(proxy.beforeIssueUpstreamRequest, &context)
-	
+
 	if connHijacked {
 		return
 	}
-	
+
 	if err != nil {
 		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
+		return
 	}
 
 	if rsr.Method == http.MethodConnect {
@@ -316,7 +316,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 	if connHijacked {
 		return
 	}
-	
+
 	if err != nil {
 		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
 		return
@@ -327,41 +327,42 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 }
 
 func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Request) (rresp *http.Response, err error) {
-	
+
 	var counter int = 0
 	var start time.Time = time.Now()
-	
+
 	for {
-		
+
 		counter += 1
-		
+
 		rresp, err = proxy.Client.Do(rsr)
-		if err != nil {
+
+		if err == nil {
 			return
 		}
 		
 		now := time.Now()
-		
+
 		if proxy.MaxTimeTryingToConnect != 0 && now.Sub(start) >= proxy.MaxTimeTryingToConnect {
 			return
 		}
-		
+
 		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
 			return
 		}
-		
+
 		urlErr, ok := err.(*url.Error)
 		if !ok {
 			return
 		}
-		
+
 		if !urlErr.Temporary() {
 			return
 		}
-		
+
 		time.Sleep(proxy.RequestRetryTimeout)
 	}
-	
+
 }
 
 //*****************************************************************************
@@ -453,42 +454,42 @@ func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGrou
 }
 
 func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress string) (conn net.Conn, err error) {
-	
+
 	var counter int = 0
 	var start time.Time = time.Now()
-	
+
 	for {
-		
+
 		counter += 1
-		
+
 		conn, err = net.Dial("tcp", remoteAddress)
 		if err != nil {
 			return
 		}
-		
+
 		now := time.Now()
-		
+
 		if proxy.MaxTimeTryingToConnect != 0 && now.Sub(start) >= proxy.MaxTimeTryingToConnect {
 			return
 		}
-		
+
 		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
 			return
 		}
-		
+
 		netErr, ok := err.(*net.OpError)
 		if !ok {
 			return
 		}
-		
+
 		if !netErr.Temporary() {
 			return
 		}
-		
+
 		time.Sleep(proxy.RequestRetryTimeout)
-		
+
 	}
-	
+
 }
 
 //*****************************************************************************

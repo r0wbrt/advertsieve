@@ -126,7 +126,7 @@ const (
 	ServerTypeRedirect = 3
 )
 
-var ServerTypeMap map[string]int = map[string]int{"http": ServerTypeHttp, "https": ServerTypeHttps, "redirect": ServerTypeRedirect}
+var ServerTypeMap map[string]int = map[string]int{"http": ServerTypeHttp, "https": ServerTypeHttps, "proxy": ServerTypeRedirect}
 
 func ServerTypeLexeme(input []rune) (serverType interface{}, unconsumedInput []rune, err error) {
 

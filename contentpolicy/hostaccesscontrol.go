@@ -13,12 +13,10 @@
  *  limitations under the License.
  */
 
-package accesscontrol
+package contentpolicy
 
 import (
-	"localhost/rtaylor/advertsieve/httpserver"
 	"net"
-	"net/http"
 	"strings"
 	"sync"
 )
@@ -135,31 +133,4 @@ func (hostAC *HostAccessControl) checkHostStatus(host string) int {
 
 		return 0
 	}
-}
-
-func PreventConnectionsToLocalhost(context *httpserver.ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
-	var host string = context.UpstreamRequest.URL.Hostname()
-	var ip net.IP = net.ParseIP(host)
-	var IPList []net.IP
-
-	if ip != nil {
-		IPList = append(IPList, ip)
-	} else {
-		IPList, err = net.LookupIP(host)
-		if err != nil {
-			return
-		}
-	}
-
-	//Loop over the IP's making sure none of them connects back to the local
-	//link back.
-	for i := 0; i < len(IPList); i++ {
-		if IPList[i].IsLoopback() {
-			connHijacked = true
-			http.Error(context.DownstreamResponse, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-	}
-
-	return
 }

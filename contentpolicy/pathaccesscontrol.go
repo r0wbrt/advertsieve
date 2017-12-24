@@ -13,7 +13,7 @@
  *  limitations under the License.
  */
 
-package accesscontrol
+package contentpolicy
 
 import (
 	"errors"

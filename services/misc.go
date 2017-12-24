@@ -13,13 +13,14 @@
  * limitations under the License.
  */
 
-package httpserver
+package services
 
 import (
 	"errors"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
@@ -58,7 +59,7 @@ func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijack
 	if hostIP != nil {
 		IPList = append(IPList, hostIP)
 	} else {
-		IPList, err = net.LookupIP(host)
+		IPList, err = lookupIP(host, context.Proxy)
 		if err != nil {
 			return
 		}
@@ -74,4 +75,70 @@ func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijack
 	}
 
 	return
+}
+
+func PreventConnectionsToLocalhost(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
+	var host string = context.UpstreamRequest.URL.Hostname()
+	var ip net.IP = net.ParseIP(host)
+	var IPList []net.IP
+
+	if ip != nil {
+		IPList = append(IPList, ip)
+	} else {
+		IPList, err = lookupIP(host, context.Proxy)
+		if err != nil {
+			return
+		}
+	}
+
+	//Loop over the IP's making sure none of them connects back to the local
+	//link back.
+	for i := 0; i < len(IPList); i++ {
+		if IPList[i].IsLoopback() {
+			connHijacked = true
+			http.Error(context.DownstreamResponse, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+	}
+
+	return
+}
+
+func lookupIP(host string, proxy *ProxyServer) (IPList []net.IP, err error) {
+
+	var counter int = 0
+	var start time.Time = time.Now()
+
+	for {
+
+		counter += 1
+
+		IPList, err = net.LookupIP(host)
+		if err == nil {
+			return
+		}
+
+		now := time.Now()
+
+		if proxy.MaxTimeTryingToConnect != 0 && now.Sub(start) >= proxy.MaxTimeTryingToConnect {
+			return
+		}
+
+		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
+			return
+		}
+
+		dnsErr, ok := err.(*net.DNSError)
+		if !ok {
+			return
+		}
+
+		if !dnsErr.Temporary() {
+			return
+		}
+
+		time.Sleep(proxy.RequestRetryTimeout)
+
+	}
+
 }

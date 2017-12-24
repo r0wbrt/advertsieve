@@ -13,11 +13,10 @@
  *  limitations under the License.
  */
 
-package advertsieve
+package contentpolicy
 
 import (
-	"localhost/rtaylor/advertsieve/accesscontrol"
-	"localhost/rtaylor/advertsieve/httpserver"
+	"github.com/r0wbrt/advertsieve/services"
 	"mime"
 	"net/http"
 	"net/url"
@@ -25,48 +24,27 @@ import (
 	"sync"
 )
 
-type AccessControlServerHook struct {
-	//When set to true, connections to localhost are permitted. Note,
-	//this will generate additional DNS traffic as hosts will need to be
-	//resolved to determine if they map to local host.
-	//
-	//This should only be set to true if you know what you are doing. Setting
-	//this to true has the potential to expose services on the server that
-	//expected only local programs to be able to connect to them.
-	AllowConnectToLocalhost bool
-
-	//When set to true, loop detection is turned off exposing this server
-	//to resource exhaustion attacks. Only set this to true if you know what
-	//you are doing.
-	DisableLoopDetection bool
-
+type ContentPolicyServerHook struct {
 	//When set to true, requests with no refer are still filtered. Set this to true
 	//if you want to use this server for content filtering. Eg: parental controls.
 	FilterOnReferFreeRequests bool
 
-	HostAccessControl *accesscontrol.HostAccessControl
+	HostAccessControl *HostAccessControl
 
 	//Must be compiled
-	PathAccessControl *accesscontrol.PathAccessControl
+	PathAccessControl *PathAccessControl
 
 	//RW mutex to control access to this structure
 	Mutex sync.RWMutex
 }
 
-func (instance *AccessControlServerHook) Hook(context *httpserver.ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
+func (instance *ContentPolicyServerHook) Hook(context *services.ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
 
 	instance.Mutex.RLock()
 	defer instance.Mutex.RUnlock()
 
 	var rsr *http.Request = context.UpstreamRequest
 	var w http.ResponseWriter = context.DownstreamResponse
-
-	if context.RequestState == httpserver.BeforeIssueUpstreamRequest {
-		connHijacked, err = PerformBasicServerProtections(context, instance.AllowConnectToLocalhost, instance.DisableLoopDetection)
-		if err != nil || connHijacked {
-			return
-		}
-	}
 
 	if instance.HostAccessControl != nil {
 		var requestHost string = GetRequestHost(rsr)
@@ -113,13 +91,13 @@ func (instance *AccessControlServerHook) Hook(context *httpserver.ProxyChainCont
 
 func SniffRequestType(r *http.Request, resp *http.Response) int64 {
 
-	if httpserver.IsWebSocketRequest(r) {
-		return accesscontrol.ContentTypeWebSocket
+	if services.IsWebSocketRequest(r) {
+		return ContentTypeWebSocket
 	}
 
 	//Many popular libraries add X-Request-With to signify an ajax request.
 	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
-		return accesscontrol.ContentTypeXMLHTTPRequest
+		return ContentTypeXMLHTTPRequest
 	}
 
 	//If we have an http response, the server should have sent us a Content-Type
@@ -142,7 +120,7 @@ func SniffRequestType(r *http.Request, resp *http.Response) int64 {
 	if len(acceptHeader) > 0 {
 
 		var res int64 = sniffAcceptHeader(acceptHeader)
-		if res != accesscontrol.ContentTypeOther {
+		if res != ContentTypeOther {
 			return res
 		}
 	}
@@ -182,12 +160,12 @@ func sniffAcceptHeader(s string) int64 {
 	for i := 0; i < len(pieces); i++ {
 		var mimeType string = extractMimeType(pieces[i])
 		res := mimeStringToType(mimeType)
-		if res != accesscontrol.ContentTypeOther {
+		if res != ContentTypeOther {
 			return res
 		}
 	}
 
-	return accesscontrol.ContentTypeOther
+	return ContentTypeOther
 }
 
 func mimeStringToType(mimeType string) int64 {
@@ -197,17 +175,17 @@ func mimeStringToType(mimeType string) int64 {
 
 	if lenImagePrefix < len(mimeType) {
 		if mimeType[:lenImagePrefix] == imagePrefix {
-			return accesscontrol.ContentTypeImage
+			return ContentTypeImage
 		}
 	}
 
 	switch mimeType {
 	case "application/javascript":
-		return accesscontrol.ContentTypeScript
+		return ContentTypeScript
 	case "text/css":
-		return accesscontrol.ContentTypeStylesheet
+		return ContentTypeStylesheet
 	default:
-		return accesscontrol.ContentTypeOther
+		return ContentTypeOther
 	}
 }
 
@@ -216,7 +194,7 @@ func PassiveAggressiveBlockRequest(w http.ResponseWriter) {
 	for k := range w.Header() {
 		w.Header().Del(k)
 	}
-	
+
 	//Do not ask again for 7 days.
 	w.Header().Set("Cache-Control", "604800")
 	w.WriteHeader(http.StatusNoContent)
@@ -288,23 +266,6 @@ func IsSubdomain(base, sub string) bool {
 	}
 
 	return true
-}
-
-func PerformBasicServerProtections(context *httpserver.ProxyChainContext, allowConnectToLocalhost bool, disableLoopDetection bool) (connHijacked bool, err error) {
-
-	var handlers []httpserver.ProxyHook
-
-	if !allowConnectToLocalhost {
-		handlers = append(handlers, accesscontrol.PreventConnectionsToLocalhost)
-	}
-
-	if !disableLoopDetection {
-		handlers = append(handlers, httpserver.DetectHTTPLoop)
-	}
-
-	connHijacked, err = httpserver.RunHandlerChain(handlers, context)
-
-	return
 }
 
 func GetRequestFilterHost(r *http.Request, returnRequestHostIfNoReferHeader bool) (host string, ok bool) {
