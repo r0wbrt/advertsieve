@@ -236,6 +236,7 @@ func (database *InMemoryCertDatabase) trimDatabase() {
 	for i := 0; i < len(entryList) && i < database.NumberOfCertsToDrop; i++ {
 		entry := entryList[i]
 		delete(database.certDatabase, entry.host)
+		database.numberOfCertsInDatabase--;
 	}
 
 }
