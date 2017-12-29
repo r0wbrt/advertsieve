@@ -85,7 +85,7 @@ type ProxyServer struct {
 	MinRequestRetryTimeout time.Duration
 	
 	//Time duration to multiply the exponential back off coefficient by.
-	RetryBackoffCoefficient
+	RetryBackoffCoefficient time.Duration
 
 	//Chain of handlers to call before each proxied request.
 	beforeIssueUpstreamRequest []ProxyHook
