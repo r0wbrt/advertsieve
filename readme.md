@@ -47,9 +47,10 @@ To run advertsieve simply call advertsieve and supply the path to the configurat
 
 ```
 advertseive /my/path/to the configuration/file/.config
-```
+```   
 
-###Configuration options
+
+### Configuration options
 
 Advertsieve configuration files have a very simple syntax. Each directive is places on its
 own line. The list of command directives are below.
