@@ -449,7 +449,13 @@ func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGrou
 
 	_, err := io.Copy(to, from)
 	if err != nil {
-		proxy.MsgLogger.Println(err.Error())
+		
+		//Suppress error logging from TCP connections closes
+		neterr,ok := err.(net.Error)
+		
+		if !ok || !neterr.Timeout() {
+			proxy.MsgLogger.Println(err.Error())
+		}
 	}
 }
 
