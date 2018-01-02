@@ -448,8 +448,6 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 
 func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
-	defer from.Close()
-	defer to.Close()
 
 	_, err := io.Copy(to, from)
 	if err != nil {
