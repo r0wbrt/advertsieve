@@ -30,6 +30,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"context"
 )
 
 type ProxyHookType int
@@ -298,7 +299,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 		rsr.Body = nil
 	}
 
-	rresp, err := proxy.attemptHttpConnectionToUpstreamServer(rsr)
+	rresp, err := proxy.attemptHttpConnectionToUpstreamServer(rsr, r.Context())
 
 	if err != nil {
 		proxy.HttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
@@ -330,7 +331,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 	io.Copy(w, rresp.Body)
 }
 
-func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Request) (rresp *http.Response, err error) {
+func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Request, context context.Context) (rresp *http.Response, err error) {
 
 	var counter int = 0
 	var start time.Time = time.Now()
@@ -363,6 +364,13 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 		if !urlErr.Temporary() {
 			return
 		}
+		
+		//Cancel request if client has disconnected
+		select {
+			case <- context.Done():
+				panic(http.ErrAbortHandler)
+			default:
+		} 
 
 		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
 	}
