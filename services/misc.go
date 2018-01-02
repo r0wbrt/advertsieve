@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"math/rand"
 )
 
 func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
@@ -73,7 +74,6 @@ func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijack
 			return
 		}
 	}
-
 	return
 }
 
@@ -137,8 +137,20 @@ func lookupIP(host string, proxy *ProxyServer) (IPList []net.IP, err error) {
 			return
 		}
 
-		time.Sleep(proxy.RequestRetryTimeout)
+		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
 
 	}
 
+}
+
+
+func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration, kthTry int) {
+	
+	//Algorithm based on the one used by ethernet following a collision.
+	
+	var maxNumber int64 = (1 << uint(kthTry)) - 1 // 2^c - 1
+	var multiplier int64 = rand.Int63n(maxNumber)
+	var waitDuration time.Duration = time.Duration(multiplier) * baseDuration
+	
+	time.Sleep(setPause + waitDuration)
 }

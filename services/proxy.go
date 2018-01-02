@@ -82,7 +82,10 @@ type ProxyServer struct {
 	MaxTimeTryingToConnect time.Duration
 
 	//Amount of time to wait before retrying a failed request.
-	RequestRetryTimeout time.Duration
+	MinRequestRetryTimeout time.Duration
+	
+	//Time duration to multiply the exponential back off coefficient by.
+	RetryBackoffCoefficient time.Duration
 
 	//Chain of handlers to call before each proxied request.
 	beforeIssueUpstreamRequest []ProxyHook
@@ -107,9 +110,10 @@ type ProxyServer struct {
 func NewProxyServer() (proxy *ProxyServer) {
 	proxy = new(ProxyServer)
 
-	proxy.MaxNumberOfConnectAttempts = 5
-	proxy.MaxTimeTryingToConnect = time.Duration(12) * time.Second
-	proxy.RequestRetryTimeout = time.Duration(2) * time.Second
+	proxy.MaxNumberOfConnectAttempts = 0
+	proxy.MaxTimeTryingToConnect = time.Duration(30) * time.Second
+	proxy.MinRequestRetryTimeout = 0
+	proxy.RetryBackoffCoefficient = time.Duration(500) * time.Millisecond
 	proxy.Client = new(http.Client)
 	proxy.Client.CheckRedirect = func(req *http.Request, via []*http.Request) (err error) {
 		err = http.ErrUseLastResponse
@@ -360,7 +364,7 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 			return
 		}
 
-		time.Sleep(proxy.RequestRetryTimeout)
+		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
 	}
 
 }
@@ -492,7 +496,7 @@ func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress str
 			return
 		}
 
-		time.Sleep(proxy.RequestRetryTimeout)
+		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
 
 	}
 
