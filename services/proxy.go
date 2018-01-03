@@ -190,6 +190,8 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	//Copy over headers for sending to the remote server
 	setUpRemoteServerRequest(r, rsr)
+	
+	RemoveHopByHopHeaders(&rsr.Header)
 
 	var context ProxyChainContext = ProxyChainContext{
 		DownstreamRequest:  r,
@@ -520,7 +522,5 @@ func setUpRemoteServerRequest(clientRequest *http.Request, remoteRequest *http.R
 		values := append([]string(nil), v...)
 		remoteRequest.Header[k] = values
 	}
-
-	remoteRequest.ContentLength = clientRequest.ContentLength
-	remoteRequest.TransferEncoding = append([]string(nil), clientRequest.TransferEncoding...)
+	
 }
