@@ -457,10 +457,6 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 
 	defer fromRemoteServerConn.Close()
 
-	if writeOK {
-		w.WriteHeader(http.StatusOK)
-	}
-
 	toClientConn, _, err := hj.Hijack()
 
 	if err != nil {
@@ -470,6 +466,14 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 
 	defer toClientConn.Close()
 
+	if writeOK {
+		_, err = toClientConn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
+		if err != nil {
+			proxy.MsgLogger.Println(err)
+			panic(http.ErrAbortHandler)
+		}
+	}
+	
 	if preambleWriter != nil {
 		_, err := io.Copy(fromRemoteServerConn, preambleWriter)
 		if err != nil {
