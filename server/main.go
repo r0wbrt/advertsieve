@@ -74,7 +74,7 @@ func (monad *errorMonad) loadContentPolicy() (preAccessControlHook, postAccessCo
 			return nil, nil
 		}
 	}
-	
+
 	pathAcl.Compile()
 
 	preAccessControlHook = new(contentpolicy.ContentPolicyServerHook)

@@ -90,13 +90,13 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 			bridge.Logger.Println(err.Error())
 			return
 		}
-		
+
 		_, err = conn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
 		if err != nil {
 			bridge.Logger.Println(err)
 			panic(http.ErrAbortHandler)
 		}
-		
+
 		select {
 		case _ = <-bridge.done:
 			//If we come here for any reason, this channel has closed.

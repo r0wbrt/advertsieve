@@ -21,6 +21,8 @@ package services
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"io"
 	"log"
 	"net"
@@ -30,8 +32,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"context"
-	"crypto/tls"
 )
 
 type ProxyHookType int
@@ -60,7 +60,7 @@ type ProxyChainContext struct {
 
 	//Proxy instance
 	Proxy *ProxyServer
-	
+
 	//Function used to cancel the request
 	cancel func()
 }
@@ -88,7 +88,7 @@ type ProxyServer struct {
 
 	//Amount of time to wait before retrying a failed request.
 	MinRequestRetryTimeout time.Duration
-	
+
 	//Time duration to multiply the exponential back off coefficient by.
 	RetryBackoffCoefficient time.Duration
 
@@ -122,13 +122,13 @@ func NewProxyServer() (proxy *ProxyServer) {
 
 	proxy.MsgLogger = log.New(os.Stderr, "Proxy ", log.Lmicroseconds|log.Ldate)
 
-	proxy.Transport = &http.Transport { 
-		TLSHandshakeTimeout: time.Duration(10) * time.Second,
-		MaxIdleConns: 128,
-		IdleConnTimeout: time.Duration(2) * time.Minute,
+	proxy.Transport = &http.Transport{
+		TLSHandshakeTimeout:   time.Duration(10) * time.Second,
+		MaxIdleConns:          128,
+		IdleConnTimeout:       time.Duration(2) * time.Minute,
 		ExpectContinueTimeout: time.Duration(1) * time.Second,
 		ResponseHeaderTimeout: time.Duration(10) * time.Second,
-		TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
+		TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
 	}
 	return
 }
@@ -199,7 +199,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rsr = rsr.WithContext(ctx)
 	//Copy over headers for sending to the remote server
 	setUpRemoteServerRequest(r, rsr)
-	
+
 	RemoveHopByHopHeaders(&rsr.Header)
 
 	var proxyContext ProxyChainContext = ProxyChainContext{
@@ -208,7 +208,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		DownstreamResponse: w,
 		Proxy:              proxy,
 		RequestState:       BeforeIssueUpstreamRequest,
-		cancel: 		    cancel,
+		cancel:             cancel,
 	}
 
 	//Run Before Request hooks
@@ -341,7 +341,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 
 	w.WriteHeader(rresp.StatusCode)
 	io.Copy(w, rresp.Body)
-	
+
 }
 
 func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Request, reqContext context.Context, cancel func()) (rresp *http.Response, err error) {
@@ -352,23 +352,23 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 	for {
 
 		counter += 1
-		
+
 		quitChan := make(chan interface{})
-		
+
 		go monitorRequest(cancel, quitChan, reqContext)
-		
+
 		rresp, err = proxy.Transport.RoundTrip(rsr)
 
 		close(quitChan)
-		
+
 		if rsr.Context().Err() == context.Canceled {
 			panic(http.ErrAbortHandler)
 		}
-		
+
 		if err == nil {
 			return
 		}
-		
+
 		now := time.Now()
 
 		if proxy.MaxTimeTryingToConnect != 0 && now.Sub(start) >= proxy.MaxTimeTryingToConnect {
@@ -387,13 +387,13 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 		if !urlErr.Temporary() {
 			return
 		}
-		
+
 		//Cancel request if client has disconnected
 		select {
-			case <- reqContext.Done():
-				panic(http.ErrAbortHandler)
-			default:
-		} 
+		case <-reqContext.Done():
+			panic(http.ErrAbortHandler)
+		default:
+		}
 
 		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
 	}
@@ -402,12 +402,12 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 
 func monitorRequest(cancel func(), quit chan interface{}, clientContext context.Context) {
 	select {
-			case <- clientContext.Done():
-				cancel()
-			case <- quit:
-				//Do Nothing
+	case <-clientContext.Done():
+		cancel()
+	case <-quit:
+		//Do Nothing
 	}
-	
+
 }
 
 //*****************************************************************************
@@ -473,7 +473,7 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 			panic(http.ErrAbortHandler)
 		}
 	}
-	
+
 	if preambleWriter != nil {
 		_, err := io.Copy(fromRemoteServerConn, preambleWriter)
 		if err != nil {
@@ -496,10 +496,10 @@ func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGrou
 
 	_, err := io.Copy(to, from)
 	if err != nil {
-		
+
 		//Suppress error logging from TCP connections closes
-		neterr,ok := err.(net.Error)
-		
+		neterr, ok := err.(net.Error)
+
 		if !ok || !neterr.Timeout() {
 			proxy.MsgLogger.Println(err.Error())
 		}
@@ -557,5 +557,5 @@ func setUpRemoteServerRequest(clientRequest *http.Request, remoteRequest *http.R
 		values := append([]string(nil), v...)
 		remoteRequest.Header[k] = values
 	}
-	
+
 }

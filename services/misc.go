@@ -17,11 +17,11 @@ package services
 
 import (
 	"errors"
+	"math/rand"
 	"net"
 	"net/http"
 	"strings"
 	"time"
-	"math/rand"
 )
 
 func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
@@ -144,13 +144,13 @@ func lookupIP(host string, proxy *ProxyServer) (IPList []net.IP, err error) {
 }
 
 func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration, kthTry int) {
-	
+
 	//Algorithm based on the one used by ethernet following a collision.
-	
+
 	var maxNumber int64 = (1 << uint(kthTry)) - 1 // 2^c - 1
 	var multiplier int64 = rand.Int63n(maxNumber)
 	var waitDuration time.Duration = time.Duration(multiplier) * baseDuration
-	
+
 	time.Sleep(setPause + waitDuration)
 }
 
@@ -159,36 +159,36 @@ func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration,
 // license that can be found in the LICENSE file.
 
 // Hop-by-hop headers. These are removed when sent to the backend.
-  // http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
-  var hopHeaders = []string{
-  	"Connection",
-  	"Proxy-Connection", // non-standard but still sent by libcurl and rejected by e.g. google
-  	"Keep-Alive",
-  	"Proxy-Authenticate",
-  	"Proxy-Authorization",
-  	"Te",      // canonicalized version of "TE"
-  	"Trailer", // not Trailers per URL above; http://www.rfc-editor.org/errata_search.php?eid=4522
-  	"Transfer-Encoding",
-  	"Upgrade",
-  }
+// http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
+var hopHeaders = []string{
+	"Connection",
+	"Proxy-Connection", // non-standard but still sent by libcurl and rejected by e.g. google
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",      // canonicalized version of "TE"
+	"Trailer", // not Trailers per URL above; http://www.rfc-editor.org/errata_search.php?eid=4522
+	"Transfer-Encoding",
+	"Upgrade",
+}
 
-func RemoveHopByHopHeaders(header *http.Header){
+func RemoveHopByHopHeaders(header *http.Header) {
 	// Remove hop-by-hop headers listed in the "Connection" header.
-  	// See RFC 2616, section 14.10.
-  	if c := header.Get("Connection"); c != "" {
-  		for _, f := range strings.Split(c, ",") {
-  			if f = strings.TrimSpace(f); f != "" {
-  				header.Del(f)
-  			}
-  		}
-  	}
-  
-  	// Remove hop-by-hop headers to the backend. Especially
-  	// important is "Connection" because we want a persistent
-  	// connection, regardless of what the client sent to us.
-  	for _, h := range hopHeaders {
-  		if header.Get(h) != "" {
-  			header.Del(h)
-  		}
-  	}
+	// See RFC 2616, section 14.10.
+	if c := header.Get("Connection"); c != "" {
+		for _, f := range strings.Split(c, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				header.Del(f)
+			}
+		}
+	}
+
+	// Remove hop-by-hop headers to the backend. Especially
+	// important is "Connection" because we want a persistent
+	// connection, regardless of what the client sent to us.
+	for _, h := range hopHeaders {
+		if header.Get(h) != "" {
+			header.Del(h)
+		}
+	}
 }
