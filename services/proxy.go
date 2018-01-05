@@ -127,7 +127,7 @@ func NewProxyServer() (proxy *ProxyServer) {
 		MaxIdleConns:          128,
 		IdleConnTimeout:       time.Duration(2) * time.Minute,
 		ExpectContinueTimeout: time.Duration(1) * time.Second,
-		ResponseHeaderTimeout: time.Duration(10) * time.Second,
+		ResponseHeaderTimeout: time.Duration(30) * time.Second,
 		TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
 	}
 	return
@@ -391,6 +391,10 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 			return
 		}
 
+		if urlErr.Timeout() {
+			panic(http.ErrAbortHandler)
+		}
+		
 		if !urlErr.Temporary() {
 			return
 		}
