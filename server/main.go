@@ -181,7 +181,7 @@ func (monad *errorMonad) setupHttpServers(mainHandle http.Handler, auxHandler ht
 		return nil, nil
 	}
 
-	tlsConfig := SecureTLSConfig()
+	tlsConfig := services.SecureTLSConfig()
 
 	config := monad.server.Config
 	if config.CertificatePath != "" && config.PrivateKeyPath != "" {

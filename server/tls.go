@@ -44,20 +44,4 @@ func SetupTlsCertGen(certPath string, keyPath string) (*tlsutils.InMemoryCertDat
 	return tlsCertDatabase, nil
 }
 
-func SecureTLSConfig() (tlsConfig *tls.Config) {
 
-	tlsConfig = new(tls.Config)
-
-	//Min version is TLS 1.1 since TLS 1.0 has some serious flaws.
-	tlsConfig.MinVersion = tls.VersionTLS11
-
-	//Only support secure ciphers
-	tlsConfig.CipherSuites = []uint16{
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-	}
-
-	return tlsConfig
-}
