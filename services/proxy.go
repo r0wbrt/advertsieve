@@ -200,8 +200,15 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Copy over headers for sending to the remote server
 	setUpRemoteServerRequest(r, rsr)
 
+	reqIsWebsocket := IsWebSocketRequest(r)
+	
 	RemoveHopByHopHeaders(&rsr.Header)
 
+	if reqIsWebsocket {
+		rsr.Header.Add("Connection", "Upgrade")
+		rsr.Header.Add("Upgrade", "websocket")
+	}
+	
 	var proxyContext ProxyChainContext = ProxyChainContext{
 		DownstreamRequest:  r,
 		UpstreamRequest:    rsr,
@@ -223,11 +230,11 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
 		return
 	}
-
-	if rsr.Method == http.MethodConnect {
-		proxy.proxyMethodConnect(rsr, w)
-	} else if IsWebSocketRequest(rsr) {
+	
+	if IsWebSocketRequest(rsr) {
 		proxy.proxyWebSocket(rsr, w)
+	} else if rsr.Method == http.MethodConnect {
+		proxy.proxyMethodConnect(rsr, w)
 	} else {
 		proxy.returnHTTPResponse(rsr, w, r, &proxyContext)
 	}
@@ -419,8 +426,12 @@ func monitorRequest(cancel func(), quit chan interface{}, clientContext context.
 func (proxy *ProxyServer) proxyWebSocket(rsr *http.Request, w http.ResponseWriter) {
 	var buf bytes.Buffer
 
+	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
+		rsr.Body = nil
+	}
+	
 	rsr.Write(&buf)
-
+	
 	host := rsr.Host
 	if rsr.URL.Port() == "" {
 

@@ -93,7 +93,7 @@ func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 	}
 
 	var proxyServer *services.ProxyServer = services.NewProxyServer()
-	proxyServer.AllowConnect = false
+	proxyServer.AllowUpgrade = true
 	proxyServer.MsgLogger = monad.server.getLogger()
 
 	if !monad.server.Config.AllowConnectionsToLocalhost {
