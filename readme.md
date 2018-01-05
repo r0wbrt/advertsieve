@@ -55,9 +55,9 @@ advertseive /my/path/to the configuration/file/.config
 Advertsieve configuration files have a very simple syntax. Each directive is places on its
 own line. The list of command directives are below.
 
-* **listen (http|https|proxy) "IP:Port"**  
+* **listen (http|https|proxy|proxyhttps) "IP:Port"**  
 Specifies the address and port to bind a server to.
-    * First field selects which server to apply to. http is the http intercept proxy. https is the https intercept proxy. proxy is the explicit proxy. 
+    * First field selects which server to apply to. http is the http intercept proxy. https is the https intercept proxy. proxy is the explicit proxy. proxyhttps is an explicit TLS proxy which can be used by browsers that support connecting to a proxy over TLS.
     * The second field argument specifies what address and port to listen on. Valid options include localhost:80, :8081, 192.168.100.20:8081.
 
 * **httpscert "Path to key file in pem format" "Path to cert in pem format"**  
@@ -78,8 +78,44 @@ Used to control if the proxy loop detection is active. This is on by default. Pr
 * **staticsite "hostname" "path to content directory"**   
 This runs before the localhost and loop detection checks. Serves a static website. If the host matches a full qualified name such as example.com, then this content will be served instead of the fully qualified site. 
 
-* **staticsitecert "hostname" "key path>" "cert path"**  
+* **staticsitecert "hostname" "key path" "cert path"**  
 Sets the certificate of a static site. By default the https cert for static sites is generated on the fly using the cert provided in httpcert. This directive can be used to override this behavior if a custom cert for a static site is desired. 
+
+
+### Path Blocking ACL
+
+The server supports path based blocking using Adblockplus rules. Naturally,
+a subset of these rules are supported since some of these rules use css 
+element hiding or rely on knowing which element the request came from. The 
+proxy server includes a heuristics used to guess the type of element the 
+request came from. 
+
+Note, the path based ACL is disabled when accessing a path without a refer. The
+intention of this is to mimic how Adblockplus works. Eg, if you write a rule that
+blocks all js files and then navigate to that file directly, you will still be able
+to download that file.
+
+For more info on the syntax of these rules visit 
+
+```
+https://adblockplus.org/filters
+```
+
+### Host Based ACL
+
+The server also supports blocking entire domains. The format of this file
+is simply a list of domains where each line is a single domain to block. Note,
+the domain and all of its sub domains will be blocked. To add an exception to 
+a blocking rule, list that domain on a seperate line with an @ sign in front of 
+it. Eg:
+
+```
+example.com
+@safesite.example.com
+```
+
+Note, host based blocking is active whether or not the site is accessed with or 
+without a refer.
 
 ## Versioning 
 
@@ -97,6 +133,7 @@ Assignment of copyright is not needed.
 ## Authors
 
 * **Robert Christian Taylor** - *Initial Work* - [r0wbrt](https://github.com/r0wbrt)
+* **Go Authors** - *Some derived code* - [golang](https://github.com/golang/go)
 
 ## License
 
