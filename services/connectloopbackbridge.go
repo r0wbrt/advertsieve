@@ -32,9 +32,12 @@ type ConnectLoopBackBridge struct {
 	//interface to work correctly.
 	Address string
 
-	//Channel connections will be sent over.
-	connChannel chan net.Conn
+	//Channel https connections will be sent over.
+	httpsConnChannel chan net.Conn
 
+	//Channel http connections will be sent over
+	httpConnChannel chan net.Conn
+	
 	//A channel which when closed means the connections are no longer being
 	//accepted.
 	done chan interface{}
@@ -55,7 +58,8 @@ func NewConnectLoopBackBridge(handler http.Handler, address string) (bridge *Con
 	bridge = new(ConnectLoopBackBridge)
 
 	bridge.done = make(chan interface{})
-	bridge.connChannel = make(chan net.Conn)
+	bridge.httpConnChannel = make(chan net.Conn)
+	bridge.httpsConnChannel = make(chan net.Conn)
 	bridge.Logger = log.New(os.Stderr, "Connect Loopback Bridge ", log.Lmicroseconds|log.Ldate|log.Lshortfile)
 	bridge.Address = address
 	bridge.Handler = handler
@@ -74,8 +78,8 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 
 	default:
 	}
-
-	if r.Method == http.MethodConnect {
+	
+	if r.Method == http.MethodConnect && (r.URL.Port() == "443" || r.URL.Port() == "80" ){
 
 		hj, ok := w.(http.Hijacker)
 		if !ok {
@@ -97,11 +101,18 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 			panic(http.ErrAbortHandler)
 		}
 
+		var connChannel chan net.Conn
+		if r.URL.Port() == "80" {
+			connChannel = bridge.httpConnChannel
+		} else {
+			connChannel = bridge.httpsConnChannel
+		}
+		
 		select {
 		case _ = <-bridge.done:
 			//If we come here for any reason, this channel has closed.
 			conn.Close()
-		case bridge.connChannel <- conn:
+		case connChannel <- conn:
 		}
 
 	} else {
@@ -113,7 +124,7 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 
 func (bridge *ConnectLoopBackBridge) Accept() (conn net.Conn, err error) {
 	select {
-	case conn = <-bridge.connChannel:
+	case conn = <-bridge.httpsConnChannel:
 
 	case _ = <-bridge.done:
 		err = errors.New("No longer accepting new connections.")
@@ -150,4 +161,32 @@ func (addr proxyBridgeAdd) String() string {
 
 func (bridge *ConnectLoopBackBridge) Addr() net.Addr {
 	return proxyBridgeAdd{addr: bridge.Address}
+}
+
+
+type httpListener struct {
+	bridge *ConnectLoopBackBridge
+}
+
+func (bridge *ConnectLoopBackBridge) GetHttpListener() net.Listener {
+	return &httpListener{bridge: bridge}
+}
+
+func (l *httpListener) Accept() (conn net.Conn, err error) {
+	select {
+	case conn = <- l.bridge.httpConnChannel:
+
+	case _ = <- l.bridge.done:
+		err = errors.New("No longer accepting new connections.")
+	}
+
+	return
+}
+
+func (l *httpListener) Close() error {
+	return l.bridge.Close()
+}
+
+func (l *httpListener) Addr() net.Addr {
+	return proxyBridgeAdd{addr: l.bridge.Address}
 }

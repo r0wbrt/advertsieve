@@ -321,6 +321,8 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 		if monad.server.certDatabase != nil {
 			go monad.httpServerGo(httpMainServer, bridgeHandler, true)
 		}
+		
+		go monad.httpServerGo(httpMainServer, bridgeHandler.GetHttpListener(), false)
 
 		select {
 		case <-server.endServer:
