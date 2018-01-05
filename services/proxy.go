@@ -27,7 +27,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -127,7 +126,7 @@ func NewProxyServer() (proxy *ProxyServer) {
 		MaxIdleConns:          128,
 		IdleConnTimeout:       time.Duration(2) * time.Minute,
 		ExpectContinueTimeout: time.Duration(1) * time.Second,
-		ResponseHeaderTimeout: time.Duration(30) * time.Second,
+		ResponseHeaderTimeout: time.Duration(1) * time.Second,
 		TLSClientConfig: SecureTLSConfig(),
 		TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
 	}
@@ -386,18 +385,18 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
 			return
 		}
-
-		urlErr, ok := err.(*url.Error)
+		
+		urlErr, ok := err.(net.Error)
 		if !ok {
 			return
-		}
-
-		if urlErr.Timeout() {
-			panic(http.ErrAbortHandler)
 		}
 		
 		if !urlErr.Temporary() {
 			return
+		}
+		
+		if urlErr.Timeout() {
+			panic(http.ErrAbortHandler)
 		}
 
 		//Cancel request if client has disconnected
