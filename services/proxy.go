@@ -425,33 +425,35 @@ func monitorRequest(cancel func(), quit chan interface{}, clientContext context.
 
 func (proxy *ProxyServer) proxyWebSocket(rsr *http.Request, w http.ResponseWriter) {
 	var buf bytes.Buffer
-
+	var tls bool = false
+	
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
 		rsr.Body = nil
 	}
 	
 	rsr.Write(&buf)
 	
+	tls = rsr.URL.Scheme == "https"
+	
 	host := rsr.Host
 	if rsr.URL.Port() == "" {
-
 		if rsr.URL.Scheme == "https" {
 			host = host + ":443"
 		} else {
 			host = host + ":80"
 		}
-
 	}
-	proxy.proxyTCPTunnel(host, &buf, w, false)
+	
+	proxy.proxyTCPTunnel(host, &buf, w, false, tls)
 }
 
 func (proxy *ProxyServer) proxyMethodConnect(rsr *http.Request, w http.ResponseWriter) {
 
 	host := rsr.Host
-	proxy.proxyTCPTunnel(host, nil, w, true)
+	proxy.proxyTCPTunnel(host, nil, w, true, false)
 }
 
-func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io.Reader, w http.ResponseWriter, writeOK bool) {
+func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io.Reader, w http.ResponseWriter, writeOK bool, tlsConn bool) {
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -459,7 +461,7 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 		return
 	}
 
-	fromRemoteServerConn, err := proxy.attemptTcpConnectionToUpstreamServer(remoteAddress)
+	fromRemoteServerConn, err := proxy.attemptTcpConnectionToUpstreamServer(remoteAddress, tlsConn)
 
 	if err != nil {
 		proxy.HttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
@@ -517,7 +519,7 @@ func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGrou
 	}
 }
 
-func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress string) (conn net.Conn, err error) {
+func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress string, tlsConn bool) (conn net.Conn, err error) {
 
 	var counter int = 0
 	var start time.Time = time.Now()
@@ -526,7 +528,12 @@ func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress str
 
 		counter += 1
 
-		conn, err = net.Dial("tcp", remoteAddress)
+		if tlsConn {
+			conn, err = tls.Dial("tcp", remoteAddress, nil)
+		} else {
+			conn, err = net.Dial("tcp", remoteAddress)
+		}
+		
 		if err != nil {
 			return
 		}
