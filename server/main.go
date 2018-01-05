@@ -259,6 +259,9 @@ func (monad *errorMonad) spawnServers(mainServer, auxServer *http.Server) {
 			tls = true
 		case config.ServerTypeRedirect:
 			httpServer = auxServer
+		case config.ServerTypeRedirectHttps:
+			httpServer = auxServer
+			tls = true
 		}
 
 		if tls && monad.server.certDatabase == nil {
