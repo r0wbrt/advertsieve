@@ -2,7 +2,7 @@
 
 Advertsieve is a HTTP(S) transparent proxy for blocking unwanted content such as 
 advertisements. Supports a subset of adblock filter syntax as well as a discrete 
-list of domains to block. Note this software is in the early phases of development
+list of domains to block. Note, this software is in the early phases of development
 and should be considered experimental.
 
 ## Getting Started
@@ -34,8 +34,7 @@ navigate to the directory of the module and run
 go test
 ```
 
-As of right now the following modules have tests and more will be written time
-permitting.
+The following modules have tests.
 
 ```
 advertsieve/contentpolicy
@@ -52,7 +51,7 @@ advertseive /my/path/to the configuration/file/.config
 
 ### Configuration options
 
-Advertsieve configuration files have a very simple syntax. Each directive is places on its
+Advertsieve configuration files have a very simple syntax. Each directive is placed on its
 own line. The list of command directives are below.
 
 * **listen (http|https|proxy|proxyhttps) "IP:Port"**  
@@ -73,7 +72,7 @@ Adds a path access control file.
 Controls if the proxy can connect to localhost. This is off by default and should only be turned on with extreme care.
 
 * **loopdetection (on|off)**  
-Used to control if the proxy loop detection is active. This is on by default. Proxy resolves the host of each request and compares it to the addresses on the host. If any match, the server redirects the request. Only turn off if some other method is deployed on the proxy to prevent loop backs. 
+Used to control if the proxy loop detection is active. This is on by default. Proxy resolves the host of each request and compares it to the addresses the host is reachable by. If any match, the server rejects the request. Only turn off if some other method is deployed on the proxy to prevent loop backs. 
 
 * **staticsite "hostname" "path to content directory"**   
 This runs before the localhost and loop detection checks. Serves a static website. If the host matches a full qualified name such as example.com, then this content will be served instead of the fully qualified site. 
