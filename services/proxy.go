@@ -310,14 +310,10 @@ func RunHandlerChain(chain []ProxyHook, context *ProxyChainContext) (connHijacke
 
 func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseWriter, r *http.Request, context *ProxyChainContext) {
 
-	if rsr.Header.Get("Content-Length") == "" && rsr.Header.Get("Transfer-Encoding") == "" {
-		rsr.Body = nil
-	}
-
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
 		rsr.Body = nil
 	}
-
+	
 	rresp, err := proxy.attemptHttpConnectionToUpstreamServer(rsr, r.Context(), context.cancel)
 
 	if err != nil {
