@@ -16,13 +16,13 @@
 package services
 
 import (
+	"crypto/tls"
 	"errors"
 	"math/rand"
 	"net"
 	"net/http"
 	"strings"
 	"time"
-	"crypto/tls"
 )
 
 func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {

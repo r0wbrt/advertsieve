@@ -127,7 +127,7 @@ func NewProxyServer() (proxy *ProxyServer) {
 		IdleConnTimeout:       time.Duration(2) * time.Minute,
 		ExpectContinueTimeout: time.Duration(1) * time.Second,
 		ResponseHeaderTimeout: time.Duration(30) * time.Second,
-		TLSClientConfig: SecureTLSConfig(),
+		TLSClientConfig:       SecureTLSConfig(),
 		TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
 	}
 	return
@@ -201,14 +201,14 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	setUpRemoteServerRequest(r, rsr)
 
 	reqIsWebsocket := IsWebSocketRequest(r)
-	
+
 	RemoveHopByHopHeaders(&rsr.Header)
 
 	if reqIsWebsocket {
 		rsr.Header.Add("Connection", "Upgrade")
 		rsr.Header.Add("Upgrade", "websocket")
 	}
-	
+
 	var proxyContext ProxyChainContext = ProxyChainContext{
 		DownstreamRequest:  r,
 		UpstreamRequest:    rsr,
@@ -230,7 +230,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
 		return
 	}
-	
+
 	if IsWebSocketRequest(rsr) {
 		proxy.proxyWebSocket(rsr, w)
 	} else if rsr.Method == http.MethodConnect {
@@ -310,10 +310,14 @@ func RunHandlerChain(chain []ProxyHook, context *ProxyChainContext) (connHijacke
 
 func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseWriter, r *http.Request, context *ProxyChainContext) {
 
+	if rsr.Header.Get("Content-Length") == "" && rsr.Header.Get("Transfer-Encoding") == "" {
+		rsr.Body = nil
+	}
+
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
 		rsr.Body = nil
 	}
-	
+
 	rresp, err := proxy.attemptHttpConnectionToUpstreamServer(rsr, r.Context(), context.cancel)
 
 	if err != nil {
@@ -381,16 +385,16 @@ func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Reques
 		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
 			return
 		}
-		
+
 		urlErr, ok := err.(net.Error)
 		if !ok {
 			return
 		}
-		
+
 		if !urlErr.Temporary() {
 			return
 		}
-		
+
 		if urlErr.Timeout() {
 			panic(http.ErrAbortHandler)
 		}
@@ -426,15 +430,15 @@ func monitorRequest(cancel func(), quit chan interface{}, clientContext context.
 func (proxy *ProxyServer) proxyWebSocket(rsr *http.Request, w http.ResponseWriter) {
 	var buf bytes.Buffer
 	var tls bool = false
-	
+
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
 		rsr.Body = nil
 	}
-	
+
 	rsr.Write(&buf)
-	
+
 	tls = rsr.URL.Scheme == "https"
-	
+
 	host := rsr.Host
 	if rsr.URL.Port() == "" {
 		if rsr.URL.Scheme == "https" {
@@ -443,7 +447,7 @@ func (proxy *ProxyServer) proxyWebSocket(rsr *http.Request, w http.ResponseWrite
 			host = host + ":80"
 		}
 	}
-	
+
 	proxy.proxyTCPTunnel(host, &buf, w, false, tls)
 }
 
@@ -533,7 +537,7 @@ func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress str
 		} else {
 			conn, err = net.Dial("tcp", remoteAddress)
 		}
-		
+
 		if err != nil {
 			return
 		}
