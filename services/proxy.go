@@ -72,8 +72,8 @@ type ProxyServer struct {
 	//If set to false, CONNECT method will be rejected
 	AllowConnect bool
 
-	//When set to true, upgrade requests will be passed through this proxy.
-	AllowUpgrade bool
+	//When set to true, websocket upgrade requests will be passed through this proxy.
+	AllowWebsocket bool
 
 	//Logger used to handle messages generated during the operation of the proxy
 	//server.
@@ -252,20 +252,14 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 
 	if r.Method == http.MethodConnect && !proxy.AllowConnect {
 
-		proxy.HttpError(w, http.StatusForbidden, "Request for CONNECT from "+r.RemoteAddr+" but CONNECT is disabled", "Use of CONNECT method is not allowed")
+		proxy.HttpError(w, http.StatusForbidden, "Request for CONNECT from " + r.RemoteAddr + " to path \"" + r.URL.String() + "\" was denied because AllowConnect is set to false.", http.StatusText(http.StatusForbidden))
 		return false
 	}
 
-	isUpgrade := r.Header.Get("Upgrade") != ""
 	isWebSocket := IsWebSocketRequest(r)
 
-	if isUpgrade && !proxy.AllowUpgrade {
-		proxy.HttpError(w, http.StatusForbidden, "Request for HTTP upgrade from  "+r.RemoteAddr+" but HTTP upgrade is disabled", "Use of HTTP upgrade is not allowed")
-		return false
-	}
-
-	if isUpgrade && !isWebSocket {
-		proxy.HttpError(w, http.StatusNotImplemented, "Request for HTTP upgrade from  "+r.RemoteAddr+" was not web socket", "Only upgrades for websocket are supported")
+	if isWebSocket && !proxy.AllowWebsocket {
+		proxy.HttpError(w, http.StatusForbidden, "HTTP websocket upgrade request from " + r.RemoteAddr + " to path \"" + r.URL.String() + "\" was denied because AllowWebsocket is set to false.", http.StatusText(http.StatusForbidden))
 		return false
 	}
 
