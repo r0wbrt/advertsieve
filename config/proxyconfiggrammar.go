@@ -96,6 +96,12 @@ var StaticSiteHttpsCert ConfigStatement = ConfigStatement{
 	Syntax:        []Lexeme{StringLexeme, StringLexeme, StringLexeme},
 }
 
+var ServerHostnameStatement ConfigStatement = ConfigStatement{
+	Name:          "hostname",
+	AllowMultiple: false,
+	Syntax:        []Lexeme{StringLexeme},
+}
+
 func IPLexeme(input []rune) (ip interface{}, unconsumedInput []rune, err error) {
 	ip, unconsumedInput, err = ConsumeIP(input)
 
@@ -221,6 +227,7 @@ func GetProxyGrammar() (grammar *Grammar) {
 		HttpsProxyStatement,
 		HttpProxyStatement,
 		RedirectProxyStatement,
+		ServerHostnameStatement,
 	}
 
 	for i := 0; i < len(proxyTokens); i++ {

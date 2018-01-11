@@ -17,7 +17,6 @@ package services
 
 import (
 	"crypto/tls"
-	"errors"
 	"math/rand"
 	"net"
 	"net/http"
@@ -25,123 +24,43 @@ import (
 	"time"
 )
 
-func DetectHTTPLoop(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
+type DetectHTTPLoop struct {
+	Hostname string
+}
 
-	var addresses []net.Addr
-	addresses, err = net.InterfaceAddrs()
+func (config *DetectHTTPLoop) Hook(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
 
-	if err != nil {
-		return
-	}
-
-	if len(addresses) <= 0 {
-		err = errors.New("No addresses returned from local interfaces. Is the server connected to the internet?")
-		return
-	}
-
-	var localMap map[string]bool = make(map[string]bool)
-
-	for i := 0; i < len(addresses); i++ {
-
-		var address string = addresses[i].String()
-
-		//Remove the cdir slash if it exists
-		slashIndex := strings.Index(address, "/")
-		if slashIndex != -1 {
-			address = address[:slashIndex]
-		}
-
-		localMap[address] = true
-	}
-
-	var host string = context.UpstreamRequest.URL.Hostname()
-	var hostIP net.IP = net.ParseIP(host)
-	var IPList []net.IP
-
-	if hostIP != nil {
-		IPList = append(IPList, hostIP)
+	viaHeader := context.UpstreamRequest.Header.Get("Via")
+	
+	if strings.Contains(viaHeader, config.Hostname) {
+		connHijacked = true
+		http.Error(context.DownstreamResponse, http.StatusText(http.StatusLoopDetected), http.StatusLoopDetected)
 	} else {
-		IPList, err = lookupIP(host, context.Proxy)
-		if err != nil {
-			return
+		if viaHeader != "" {
+			viaHeader = viaHeader + ", "
 		}
+		
+		viaHeader = viaHeader + "HTTP/1.1 " + config.Hostname
+		context.UpstreamRequest.Header.Set("Via", viaHeader)
 	}
-
-	for i := 0; i < len(IPList); i++ {
-		_, ok := localMap[IPList[i].String()]
-		if ok {
-			connHijacked = true
-			http.Error(context.DownstreamResponse, http.StatusText(http.StatusLoopDetected), http.StatusLoopDetected)
-			return
-		}
-	}
+	
 	return
 }
 
 func PreventConnectionsToLocalhost(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
 	var host string = context.UpstreamRequest.URL.Hostname()
 	var ip net.IP = net.ParseIP(host)
-	var IPList []net.IP
 
-	if ip != nil {
-		IPList = append(IPList, ip)
-	} else {
-		IPList, err = lookupIP(host, context.Proxy)
-		if err != nil {
-			return
-		}
-	}
-
-	//Loop over the IP's making sure none of them connects back to the local
-	//link back.
-	for i := 0; i < len(IPList); i++ {
-		if IPList[i].IsLoopback() {
-			connHijacked = true
-			http.Error(context.DownstreamResponse, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-	}
+	//Originally was doing a DNS lookup on all hostnames to see if they resolved
+	//to localhost. Ended up deprecating this approach since it resulted in
+	//extra DNS latency. We also expect the server this is set up on to be 
+	//set up properly and not have extra HOST entries that resolve to localhost.
+	if host == "localhost" || ip != nil && ip.IsLoopback() {
+		connHijacked = true
+		http.Error(context.DownstreamResponse, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+	} 
 
 	return
-}
-
-func lookupIP(host string, proxy *ProxyServer) (IPList []net.IP, err error) {
-
-	var counter int = 0
-	var start time.Time = time.Now()
-
-	for {
-
-		counter += 1
-
-		IPList, err = net.LookupIP(host)
-		if err == nil {
-			return
-		}
-
-		now := time.Now()
-
-		if proxy.MaxTimeTryingToConnect != 0 && now.Sub(start) >= proxy.MaxTimeTryingToConnect {
-			return
-		}
-
-		if proxy.MaxNumberOfConnectAttempts != 0 && counter >= proxy.MaxNumberOfConnectAttempts {
-			return
-		}
-
-		dnsErr, ok := err.(*net.DNSError)
-		if !ok {
-			return
-		}
-
-		if !dnsErr.Temporary() {
-			return
-		}
-
-		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
-
-	}
-
 }
 
 func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration, kthTry int) {

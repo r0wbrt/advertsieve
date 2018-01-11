@@ -153,6 +153,9 @@ func ReadConfigurationInFromFile(path string) (*AdvertSieveConfig, error) {
 			vals := configResults.ParsedResult[i]
 
 			switch k {
+			case config.ServerHostnameStatement.Name:
+				configuration.ServerName = string(vals[0].([]rune))
+				
 			case config.ListenStatement.Name:
 				var serverType int = vals[0].(int)
 

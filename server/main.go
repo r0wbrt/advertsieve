@@ -101,7 +101,14 @@ func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 	}
 
 	if !monad.server.Config.DisableHttpLoopDetection {
-		proxyServer.AddHook(services.DetectHTTPLoop, services.BeforeIssueUpstreamRequest)
+		
+		if len(monad.server.Config.ServerName) <= 0 {
+			monad.err = errors.New("Must defined advertsieve server name using directive " + config.ServerHostnameStatement.Name + " when loop detection is active.")
+			return nil
+		}
+		
+		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName}
+		proxyServer.AddHook(loopDetecter.Hook, services.BeforeIssueUpstreamRequest)
 	}
 
 	preAccessControlHook, postAccessControlHook := monad.loadContentPolicy()
