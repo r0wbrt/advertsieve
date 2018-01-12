@@ -102,6 +102,12 @@ var ServerHostnameStatement ConfigStatement = ConfigStatement{
 	Syntax:        []Lexeme{StringLexeme},
 }
 
+var ConnectACLStatement ConfigStatement = ConfigStatement{
+	Name:          "connectacl",
+	AllowMultiple: false,
+	Syntax:        []Lexeme{PortLexeme, ConnectTypeLexeme},
+}
+
 func IPLexeme(input []rune) (ip interface{}, unconsumedInput []rune, err error) {
 	ip, unconsumedInput, err = ConsumeIP(input)
 
@@ -131,11 +137,26 @@ const (
 	ServerTypeHttps    = 2
 )
 
+const (
+	ConnectTypeHttp = 1
+	ConnectTypeHttps = 2
+	ConnectTypeConnect = 3
+)
+
+var ConnectTypeMap map[string]int = map[string]int{"http": ConnectTypeHttp, "https": ConnectTypeHttps, "connect": ConnectTypeConnect}
+
 var ServerTypeMap map[string]int = map[string]int{"http": ServerTypeHttp, "https": ServerTypeHttps}
 
 func ServerTypeLexeme(input []rune) (serverType interface{}, unconsumedInput []rune, err error) {
 
 	serverType, unconsumedInput, err = ConsumeEnum(ServerTypeMap, input)
+
+	return
+}
+
+func ConnectTypeLexeme(input []rune) (serverType interface{}, unconsumedInput []rune, err error) {
+
+	serverType, unconsumedInput, err = ConsumeEnum(ConnectTypeMap, input)
 
 	return
 }
@@ -226,6 +247,7 @@ func GetProxyGrammar() (grammar *Grammar) {
 		HttpProxyStatement,
 		RedirectProxyStatement,
 		ServerHostnameStatement,
+		ConnectACLStatement,
 	}
 
 	for i := 0; i < len(proxyTokens); i++ {
