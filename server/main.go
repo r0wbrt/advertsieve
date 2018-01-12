@@ -260,13 +260,8 @@ func (monad *errorMonad) spawnServers(mainServer, auxServer *http.Server) {
 
 		switch configuration.ServerInstances[i].Type {
 		case config.ServerTypeHttp:
-			httpServer = mainServer
-		case config.ServerTypeHttps:
-			httpServer = mainServer
-			tls = true
-		case config.ServerTypeRedirect:
 			httpServer = auxServer
-		case config.ServerTypeRedirectHttps:
+		case config.ServerTypeHttps:
 			httpServer = auxServer
 			tls = true
 		}

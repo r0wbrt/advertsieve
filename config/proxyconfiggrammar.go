@@ -129,11 +129,9 @@ func PortLexeme(input []rune) (port interface{}, unconsumedInput []rune, err err
 const (
 	ServerTypeHttp     = 1
 	ServerTypeHttps    = 2
-	ServerTypeRedirect = 3
-	ServerTypeRedirectHttps = 4
 )
 
-var ServerTypeMap map[string]int = map[string]int{"http": ServerTypeHttp, "https": ServerTypeHttps, "proxy": ServerTypeRedirect, "proxyhttps": ServerTypeRedirectHttps}
+var ServerTypeMap map[string]int = map[string]int{"http": ServerTypeHttp, "https": ServerTypeHttps}
 
 func ServerTypeLexeme(input []rune) (serverType interface{}, unconsumedInput []rune, err error) {
 
