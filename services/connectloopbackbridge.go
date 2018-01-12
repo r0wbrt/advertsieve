@@ -24,6 +24,12 @@ import (
 	"sync"
 )
 
+const (
+	HttpConnectBridge = iota
+	HttpsConnectBridge 
+	DenyConnect
+)
+
 type ConnectLoopBackBridge struct {
 	//Handler to forward http requests not using the forward method.
 	Handler http.Handler
@@ -32,6 +38,11 @@ type ConnectLoopBackBridge struct {
 	//interface to work correctly.
 	Address string
 
+	//Function used to determine where a request should go. If nil,
+	//then port 443 is mapped to https, port 80 to http, and all other 
+	//ports are blocked.
+	PortMapper func(r * http.Request) int
+	
 	//Channel https connections will be sent over.
 	httpsConnChannel chan net.Conn
 
@@ -79,7 +90,7 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 	default:
 	}
 
-	if r.Method == http.MethodConnect && (r.URL.Port() == "443" || r.URL.Port() == "80") {
+	if r.Method == http.MethodConnect {
 
 		hj, ok := w.(http.Hijacker)
 		if !ok {
@@ -89,6 +100,30 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 			return
 		}
 
+		var connChannel chan net.Conn = nil
+		var res int
+		
+		if bridge.PortMapper != nil {
+			res = bridge.PortMapper(r)
+		} else {
+			res = defaultPortMapper(r)
+		}
+		
+		switch(res) {
+			case HttpConnectBridge:
+				connChannel = bridge.httpConnChannel	
+			case HttpsConnectBridge:
+				connChannel = bridge.httpsConnChannel
+			case DenyConnect:
+				http.Error(w, "CONNECT request is denied.", http.StatusForbidden)	
+			default:
+				http.Error(w, "Unrecoverable internal server error", http.StatusInternalServerError)
+		}
+
+		if connChannel == nil {
+			return
+		}
+		
 		conn, _, err := hj.Hijack()
 		if err != nil {
 			bridge.Logger.Println(err.Error())
@@ -99,13 +134,6 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 		if err != nil {
 			bridge.Logger.Println(err)
 			panic(http.ErrAbortHandler)
-		}
-
-		var connChannel chan net.Conn
-		if r.URL.Port() == "80" {
-			connChannel = bridge.httpConnChannel
-		} else {
-			connChannel = bridge.httpsConnChannel
 		}
 
 		select {
@@ -121,6 +149,17 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 
 	return
 }
+
+func defaultPortMapper(r * http.Request) int {
+	if r.URL.Port() == "80" {
+		return HttpConnectBridge
+	} else if r.URL.Port() == "443" {
+		return HttpsConnectBridge
+	} else {
+		return DenyConnect
+	}
+}
+
 
 func (bridge *ConnectLoopBackBridge) Accept() (conn net.Conn, err error) {
 	select {
