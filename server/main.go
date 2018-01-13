@@ -101,12 +101,12 @@ func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 	}
 
 	if !monad.server.Config.DisableHttpLoopDetection {
-		
+
 		if len(monad.server.Config.ServerName) <= 0 {
 			monad.err = errors.New("Must defined advertsieve server name using directive " + config.ServerHostnameStatement.Name + " when loop detection is active.")
 			return nil
 		}
-		
+
 		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName}
 		proxyServer.AddHook(loopDetecter.Hook, services.BeforeIssueUpstreamRequest)
 	}
@@ -155,7 +155,7 @@ func (monad *errorMonad) setupBridgeServer(vhostServer *services.VirtualHostFile
 	if len(monad.server.Config.ConnectAccessControl) > 0 {
 		bridge.PortMapper = monad.server.Config.mapPort
 	}
-	
+
 	return bridge
 }
 
@@ -330,7 +330,7 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 		if monad.server.certDatabase != nil {
 			go monad.httpServerGo(httpMainServer, bridgeHandler, true)
 		}
-		
+
 		go monad.httpServerGo(httpMainServer, bridgeHandler.GetHttpListener(), false)
 
 		select {

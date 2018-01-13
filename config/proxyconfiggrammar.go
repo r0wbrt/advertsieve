@@ -133,12 +133,12 @@ func PortLexeme(input []rune) (port interface{}, unconsumedInput []rune, err err
 }
 
 const (
-	ServerTypeHttp     = 1
-	ServerTypeHttps    = 2
+	ServerTypeHttp  = 1
+	ServerTypeHttps = 2
 )
 
 const (
-	ConnectTypeHttp = 1
+	ConnectTypeHttp  = 1
 	ConnectTypeHttps = 2
 )
 

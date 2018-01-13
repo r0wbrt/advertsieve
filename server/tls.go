@@ -43,5 +43,3 @@ func SetupTlsCertGen(certPath string, keyPath string) (*tlsutils.InMemoryCertDat
 
 	return tlsCertDatabase, nil
 }
-
-

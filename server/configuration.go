@@ -23,8 +23,8 @@ import (
 	"github.com/r0wbrt/advertsieve/services"
 	"net/http"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 type VirtualHost struct {
@@ -41,7 +41,7 @@ type ServerInstance struct {
 }
 
 type ConnectAccessControl struct {
-	Port int
+	Port   int
 	Server int
 }
 
@@ -63,7 +63,7 @@ type AdvertSieveConfig struct {
 	VirtualHosts map[string]VirtualHost
 
 	ServerName string
-	
+
 	ConnectAccessControl []ConnectAccessControl
 }
 
@@ -132,26 +132,26 @@ func ReadInPathACLFile(path string, pathAcl *contentpolicy.PathAccessControl) er
 }
 
 func (config *AdvertSieveConfig) mapPort(r *http.Request) int {
-	
+
 	var wildCardPort *ConnectAccessControl
 	var connectList []ConnectAccessControl = config.ConnectAccessControl
-	
+
 	port, err := strconv.Atoi(r.URL.Port())
-	
+
 	if err != nil {
 		panic(http.ErrAbortHandler)
 	}
-	
+
 	for i := 0; i < len(connectList); i++ {
 		rule := connectList[i]
-		
+
 		if rule.Port == 0 {
 			wildCardPort = &rule
 		} else if rule.Port == port {
 			return returnPortRuleResponse(rule)
 		}
 	}
-	
+
 	if wildCardPort != nil {
 		return returnPortRuleResponse(*wildCardPort)
 	} else {
@@ -160,16 +160,15 @@ func (config *AdvertSieveConfig) mapPort(r *http.Request) int {
 }
 
 func returnPortRuleResponse(rule ConnectAccessControl) int {
-	switch(rule.Server) {
-		case config.ConnectTypeHttps:
-			return services.HttpsConnectBridge
-		case config.ConnectTypeHttp:
-			return services.HttpConnectBridge
-		default:
-			return services.DenyConnect
+	switch rule.Server {
+	case config.ConnectTypeHttps:
+		return services.HttpsConnectBridge
+	case config.ConnectTypeHttp:
+		return services.HttpConnectBridge
+	default:
+		return services.DenyConnect
 	}
 }
-
 
 func ReadConfigurationInFromFile(path string) (*AdvertSieveConfig, error) {
 
@@ -203,13 +202,13 @@ func ReadConfigurationInFromFile(path string) (*AdvertSieveConfig, error) {
 			vals := configResults.ParsedResult[i]
 
 			switch k {
-				
+
 			case config.ConnectACLStatement.Name:
 				configuration.ConnectAccessControl = append(configuration.ConnectAccessControl, ConnectAccessControl{Port: vals[0].(int), Server: vals[1].(int)})
-				
+
 			case config.ServerHostnameStatement.Name:
 				configuration.ServerName = string(vals[0].([]rune))
-				
+
 			case config.ListenStatement.Name:
 				var serverType int = vals[0].(int)
 

@@ -31,7 +31,7 @@ type DetectHTTPLoop struct {
 func (config *DetectHTTPLoop) Hook(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
 
 	viaHeader := context.UpstreamRequest.Header.Get("Via")
-	
+
 	if strings.Contains(viaHeader, config.Hostname) {
 		connHijacked = true
 		http.Error(context.DownstreamResponse, http.StatusText(http.StatusLoopDetected), http.StatusLoopDetected)
@@ -39,11 +39,11 @@ func (config *DetectHTTPLoop) Hook(context *ProxyChainContext) (stopProcessingCh
 		if viaHeader != "" {
 			viaHeader = viaHeader + ", "
 		}
-		
+
 		viaHeader = viaHeader + "HTTP/1.1 " + config.Hostname
 		context.UpstreamRequest.Header.Set("Via", viaHeader)
 	}
-	
+
 	return
 }
 
@@ -53,12 +53,12 @@ func PreventConnectionsToLocalhost(context *ProxyChainContext) (stopProcessingCh
 
 	//Originally was doing a DNS lookup on all hostnames to see if they resolved
 	//to localhost. Ended up deprecating this approach since it resulted in
-	//extra DNS latency. We also expect the server this is set up on to be 
+	//extra DNS latency. We also expect the server this is set up on to be
 	//set up properly and not have extra HOST entries that resolve to localhost.
 	if host == "localhost" || ip != nil && ip.IsLoopback() {
 		connHijacked = true
 		http.Error(context.DownstreamResponse, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-	} 
+	}
 
 	return
 }
