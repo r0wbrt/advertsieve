@@ -304,6 +304,7 @@ func RunHandlerChain(chain []ProxyHook, context *ProxyChainContext) (connHijacke
 
 func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseWriter, r *http.Request, context *ProxyChainContext) {
 
+	
 	if rsr.Header.Get("Content-Length") == "" && rsr.Header.Get("Transfer-Encoding") == "" {
 		rsr.Body = nil
 	}
@@ -311,7 +312,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
 		rsr.Body = nil
 	}
-
+	
 	rresp, err := proxy.attemptHttpConnectionToUpstreamServer(rsr, r.Context(), context.cancel)
 
 	if err != nil {
@@ -573,5 +574,7 @@ func setUpRemoteServerRequest(clientRequest *http.Request, remoteRequest *http.R
 		values := append([]string(nil), v...)
 		remoteRequest.Header[k] = values
 	}
+	
+	remoteRequest.ContentLength = clientRequest.ContentLength
 
 }
