@@ -140,10 +140,9 @@ const (
 const (
 	ConnectTypeHttp = 1
 	ConnectTypeHttps = 2
-	ConnectTypeConnect = 3
 )
 
-var ConnectTypeMap map[string]int = map[string]int{"http": ConnectTypeHttp, "https": ConnectTypeHttps, "connect": ConnectTypeConnect}
+var ConnectTypeMap map[string]int = map[string]int{"http": ConnectTypeHttp, "https": ConnectTypeHttps}
 
 var ServerTypeMap map[string]int = map[string]int{"http": ServerTypeHttp, "https": ServerTypeHttps}
 

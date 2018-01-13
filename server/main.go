@@ -152,6 +152,10 @@ func (monad *errorMonad) setupBridgeServer(vhostServer *services.VirtualHostFile
 	var bridge *services.ConnectLoopBackBridge = services.NewConnectLoopBackBridge(vhostServer, "127.0.0.1") //Set address to localhost
 	bridge.Logger = monad.server.getLogger()
 
+	if len(monad.server.Config.ConnectAccessControl) > 0 {
+		bridge.PortMapper = monad.server.Config.mapPort
+	}
+	
 	return bridge
 }
 
