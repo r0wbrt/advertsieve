@@ -104,7 +104,7 @@ var ServerHostnameStatement ConfigStatement = ConfigStatement{
 
 var ConnectACLStatement ConfigStatement = ConfigStatement{
 	Name:          "connectacl",
-	AllowMultiple: false,
+	AllowMultiple: true,
 	Syntax:        []Lexeme{PortLexeme, ConnectTypeLexeme},
 }
 
