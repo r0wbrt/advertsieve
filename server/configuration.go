@@ -65,6 +65,8 @@ type AdvertSieveConfig struct {
 	ServerName string
 
 	ConnectAccessControl []ConnectAccessControl
+	
+	EnableDevelopmentMode bool
 }
 
 func ReadInHostAclFile(path string, hostAcl *contentpolicy.HostAccessControl) error {
@@ -202,6 +204,9 @@ func ReadConfigurationInFromFile(path string) (*AdvertSieveConfig, error) {
 			vals := configResults.ParsedResult[i]
 
 			switch k {
+				
+			case config.EnableDevelopmentMode.Name:
+				configuration.EnableDevelopmentMode = vals[0].(bool)
 
 			case config.ConnectACLStatement.Name:
 				configuration.ConnectAccessControl = append(configuration.ConnectAccessControl, ConnectAccessControl{Port: vals[0].(int), Server: vals[1].(int)})

@@ -108,6 +108,13 @@ var ConnectACLStatement ConfigStatement = ConfigStatement{
 	Syntax:        []Lexeme{PortLexeme, ConnectTypeLexeme},
 }
 
+//Enables lightweight debug diagnostics
+var EnableDevelopmentMode ConfigStatement = ConfigStatement{
+	Name:          "debugmode",
+	AllowMultiple: false,
+	Syntax:        []Lexeme{OnOffLexeme},
+}
+
 func IPLexeme(input []rune) (ip interface{}, unconsumedInput []rune, err error) {
 	ip, unconsumedInput, err = ConsumeIP(input)
 
@@ -247,6 +254,7 @@ func GetProxyGrammar() (grammar *Grammar) {
 		RedirectProxyStatement,
 		ServerHostnameStatement,
 		ConnectACLStatement,
+		EnableDevelopmentMode,
 	}
 
 	for i := 0; i < len(proxyTokens); i++ {
