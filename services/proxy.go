@@ -51,6 +51,9 @@ const (
 	BeforeIssueDownstreamResponse
 )
 
+const proxyErrorPrefix = "Proxy Core Server: "
+const proxyComponentError = "Proxy Handler Error: "
+
 //Context passed through a proxy hook chain.
 type ProxyChainContext struct {
 
@@ -199,8 +202,33 @@ func (proxy *ProxyServer) AddHook(hook ProxyHook, hookType ProxyHookType) {
 //Helper function that sends an error to the remote client and logs an internal
 //description of the error via the http logger.
 func (proxy *ProxyServer) HttpError(w http.ResponseWriter, code int, internalMessage string, externalMessage string) {
-	proxy.MsgLogger.Println(internalMessage)
+	proxy.emitHttpError(w, code, internalMessage, externalMessage, false)
+}
+
+func (proxy *ProxyServer) coreHttpError(w http.ResponseWriter, code int, internalMessage string, externalMessage string) {
+	proxy.emitHttpError(w, code, internalMessage, externalMessage, true)
+}
+
+
+func (proxy *ProxyServer) emitHttpError(w http.ResponseWriter, code int, internalMessage string, externalMessage string, coreError bool) {
+	var prefix string
+	
+	if coreError {
+		prefix = proxyErrorPrefix
+	} else {
+		prefix = proxyComponentError
+	}
+	
+	proxy.MsgLogger.Printf("%s HTTP request error \"%s.\" External message sent was \"%s.\" with error code %d.", prefix, internalMessage, externalMessage, code)
 	http.Error(w, externalMessage, code)
+}
+
+func (proxy *ProxyServer) logError(context string, errorMessage string) {
+	proxy.MsgLogger.Printf("%s Internal error \"%s.\" while %s.", proxyErrorPrefix, errorMessage, context)
+}
+
+func (proxy *ProxyServer) logWarning(warning string) {
+	proxy.MsgLogger.Printf("%s Warning \"%s.\"", proxyErrorPrefix, warning)
 }
 
 //Standard function that handles a proxy request.
@@ -222,7 +250,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodConnect {
 		//Only support http(s) requests.
 		if r.URL.Scheme != "http" && r.URL.Scheme != "https" && r.URL.Scheme != "" {
-			proxy.HttpError(w, http.StatusBadRequest, "Received non http URI scheme from "+r.RemoteAddr+". URI was "+r.URL.String(), "Bad Request")
+			proxy.coreHttpError(w, http.StatusBadRequest, "Received non http URI scheme from "+r.RemoteAddr+". URI was "+r.URL.String(), "Bad Request")
 			return
 		}
 
@@ -237,7 +265,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rsr, err := http.NewRequest(r.Method, path.String(), r.Body)
 	if err != nil {
-		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
+		proxy.coreHttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
 		return
 	}
 
@@ -273,7 +301,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if connHijacked || err != nil {
 		if err != nil {
-			proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
+			proxy.coreHttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
 		}
 		return
 	}
@@ -296,14 +324,14 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 	//     		  access control operations?
 	
 	if r.Method == http.MethodConnect && !proxy.AllowConnect {
-		proxy.HttpError(w, http.StatusForbidden, "Request for CONNECT from "+r.RemoteAddr+" to path \""+r.URL.String()+"\" was denied because AllowConnect is set to false.", http.StatusText(http.StatusForbidden))
+		proxy.coreHttpError(w, http.StatusForbidden, "Request for CONNECT from "+r.RemoteAddr+" to path \""+r.URL.String()+"\" was denied because AllowConnect is set to false.", http.StatusText(http.StatusForbidden))
 		return false
 	}
 
 	isWebSocket := IsWebSocketRequest(r)
 
 	if isWebSocket && !proxy.AllowWebsocket {
-		proxy.HttpError(w, http.StatusForbidden, "HTTP websocket upgrade request from "+r.RemoteAddr+" to path \""+r.URL.String()+"\" was denied because AllowWebsocket is set to false.", http.StatusText(http.StatusForbidden))
+		proxy.coreHttpError(w, http.StatusForbidden, "HTTP websocket upgrade request from "+r.RemoteAddr+" to path \""+r.URL.String()+"\" was denied because AllowWebsocket is set to false.", http.StatusText(http.StatusForbidden))
 		return false
 	}
 
@@ -353,7 +381,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 	rresp, err := proxy.attemptHttpConnectionToUpstreamServer(rsr, r.Context(), context.cancelReq)
 
 	if err != nil {
-		proxy.HttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
+		proxy.coreHttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
 		return
 	}
 
@@ -374,7 +402,7 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 	}
 
 	if err != nil {
-		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
+		proxy.coreHttpError(w, http.StatusInternalServerError, err.Error(), http.StatusText(http.StatusInternalServerError))
 		return
 	}
 
@@ -400,7 +428,8 @@ func  (proxy *ProxyServer) removeBodyFromRequest(rsr *http.Request) {
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
 		
 		if rsr.Body != nil {
-			proxy.MsgLogger.Println("Warning, http method " + rsr.Method + " for resource " + rsr.URL.String() + " has a body. This could cause problems with upstream servers.")
+
+			proxy.logWarning("Warning, http method " + rsr.Method + " for resource " + rsr.URL.String() + " has a body. This could cause problems with upstream servers.")
 		}
 	}
 }
@@ -508,14 +537,14 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		proxy.HttpError(w, http.StatusNotImplemented, "Could not Hijack client http connection. Hijack not supported by implementation.", "Proxying TCP connection failed")
+		proxy.coreHttpError(w, http.StatusNotImplemented, "Could not Hijack client http connection. Hijack not supported by implementation.", "Proxying TCP connection failed")
 		return
 	}
 
 	fromRemoteServerConn, err := proxy.attemptTcpConnectionToUpstreamServer(remoteAddress, tlsConn)
 
 	if err != nil {
-		proxy.HttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
+		proxy.coreHttpError(w, http.StatusBadGateway, err.Error(), "Could not contact upstream server")
 		return
 	}
 
@@ -524,16 +553,21 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 	toClientConn, _, err := hj.Hijack()
 
 	if err != nil {
-		proxy.HttpError(w, http.StatusInternalServerError, err.Error(), "Proxying TCP connection failed")
+		proxy.coreHttpError(w, http.StatusInternalServerError, err.Error(), "Proxying TCP connection failed")
 		return
 	}
 
 	defer toClientConn.Close()
 
+	//Clear timeouts
+	toClientConn.SetDeadline(time.Time{})
+	toClientConn.SetReadDeadline(time.Time{})
+	toClientConn.SetWriteDeadline(time.Time{})
+	
 	if writeOK {
 		_, err = toClientConn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
 		if err != nil {
-			proxy.MsgLogger.Println(err)
+			proxy.logError("attempting to write HTTP OK for connect", err.Error())
 			panic(http.ErrAbortHandler)
 		}
 	}
@@ -541,7 +575,7 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 	if preambleWriter != nil {
 		_, err := io.Copy(fromRemoteServerConn, preambleWriter)
 		if err != nil {
-			proxy.MsgLogger.Println(err.Error())
+			proxy.logError("attempting to write a preamble to hijacked HTTP connection", err.Error())
 			return
 		}
 	}
@@ -565,7 +599,7 @@ func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGrou
 		neterr, ok := err.(net.Error)
 
 		if !ok || !neterr.Timeout() {
-			proxy.MsgLogger.Println(err.Error())
+			proxy.logError("piping data between two connections as part of a websocket or connect request", err.Error())
 		}
 	}
 }
