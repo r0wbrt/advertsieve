@@ -122,3 +122,14 @@ func SecureTLSConfig() (tlsConfig *tls.Config) {
 
 	return tlsConfig
 }
+
+//Helper function to determine if a request is a websocket upgrade request.
+func IsWebSocketRequest(r *http.Request) bool {
+	upgradeType := r.Header.Get("Upgrade")
+
+	if strings.ToLower(upgradeType) == "websocket" {
+		return true
+	}
+
+	return false
+}
