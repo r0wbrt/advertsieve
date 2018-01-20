@@ -96,10 +96,18 @@ func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 	proxyServer.AllowWebsocket = true
 	proxyServer.MsgLogger = monad.server.getLogger()
 
-	if !monad.server.Config.AllowConnectionsToLocalhost {
-		proxyServer.AddHook(services.PreventConnectionsToLocalhost, services.BeforeIssueUpstreamRequest)
-	}
+	var beforeIssueUpstreamRequest func(context services.ProxyRequest) error = nil
+	
+	preAccessControlHook, postAccessControlHook := monad.loadContentPolicy()
 
+	//Need to guard against a null ref exception
+	if monad.inErrorState() {
+		return nil
+	}
+	
+	preAccessControlHook.Next = beforeIssueUpstreamRequest
+	beforeIssueUpstreamRequest = preAccessControlHook.Hook 
+	
 	if !monad.server.Config.DisableHttpLoopDetection {
 
 		if len(monad.server.Config.ServerName) <= 0 {
@@ -107,20 +115,17 @@ func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 			return nil
 		}
 
-		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName}
-		proxyServer.AddHook(loopDetecter.Hook, services.BeforeIssueUpstreamRequest)
+		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName, Next: beforeIssueUpstreamRequest}
+		beforeIssueUpstreamRequest = loopDetecter.Hook
+	}
+	
+	if !monad.server.Config.AllowConnectionsToLocalhost {
+		hook := services.PreventConnectionsToLocalhost { Next: beforeIssueUpstreamRequest}
+		beforeIssueUpstreamRequest = hook.Hook
 	}
 
-	preAccessControlHook, postAccessControlHook := monad.loadContentPolicy()
-
-	//Need to guard against a null ref exception
-	if monad.inErrorState() {
-		return nil
-	}
-
-	proxyServer.AddHook(preAccessControlHook.Hook, services.BeforeIssueUpstreamRequest)
-	proxyServer.AddHook(postAccessControlHook.Hook, services.BeforeIssueDownstreamResponse)
-
+	proxyServer.GetProxyRequestAgent = services.NewProxyAgentWithHandlers(beforeIssueUpstreamRequest, postAccessControlHook.Hook)
+	
 	return proxyServer
 }
 
