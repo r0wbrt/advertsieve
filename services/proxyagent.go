@@ -35,15 +35,8 @@ type ProxyRequest interface {
 	
 	//Issue this proxy's request to the remote server. Supply
 	//a context to enable the proxy request to be cancelled. 
-	IssueRequest(ctx context.Context) (context.Context, error)
+	ProxyRequest(ctx context.Context) (context.Context, error)
 	
-	//Indicates if the server can call issue response. Some methods,
-	//like CONNECT or web socket upgrade requests, do not have a response.
-	CanCallIssueResponse() bool
-	
-	//Issues response to client. This can only be called if CanCallIssueResponse 
-	//is true.
-	IssueResponse(ctx context.Context) (context.Context, error)
 	
 	//Frees any resources held by this request
 	Close() error
@@ -175,7 +168,7 @@ func convertToProxyRequest(r *http.Request, path string) (*http.Request, error) 
 	return newRequest, nil
 }
 
-func (handler *ProxyRequestHandler) IssueRequest(ctx context.Context) (context.Context, error) {
+func (handler *ProxyRequestHandler) ProxyRequest(ctx context.Context) (context.Context, error) {
 	ctx, done := context.WithCancel(ctx)
 	
 	if handler.ModifyRequest != nil {
@@ -211,15 +204,16 @@ func (handler *ProxyRequestHandler) IssueRequest(ctx context.Context) (context.C
 	} else if IsWebSocketRequest(handler.upstreamRequest) {
 		go handler.proxyWebsocket(ctx, done)
 	} else {
-		go handler.issueHttpRequest(ctx, done)
+		go handler.proxyHttpRequest(ctx, done)
 	}
 	
 	return ctx, nil
 }
 
-func (handler *ProxyRequestHandler) issueHttpRequest(ctx context.Context, done func()) {
+func (handler *ProxyRequestHandler) proxyHttpRequest(ctx context.Context, done func()) {
 	
 	defer done()
+	
 	
 	resp, err := handler.transport.RoundTrip(handler.upstreamRequest.WithContext(ctx))
 	if err != nil {
@@ -231,29 +225,14 @@ func (handler *ProxyRequestHandler) issueHttpRequest(ctx context.Context, done f
 	//response and there is nothing left to do.
 	if resp != nil {
 		handler.upstreamResponse = resp
-		handler.canCallIssueResponse = true
 		
 		for k, v := range resp.Header {
 			values := append([]string(nil), v...)
 			handler.downstreamResponse.Header()[k] = values
 		}
+	} else {
+		return
 	}
-}
-
-func (handler *ProxyRequestHandler) IssueResponse(ctx context.Context) (context.Context, error) {
-	ctx, done := context.WithCancel(ctx)
-	
-	if !handler.canCallIssueResponse {
-		return nil, &proxyRequestError{abortRequest: true, internalErrorString: "Issue response can not be called upon this kind of request or is not ready to be called"}
-	}
-	
-	go handler.returnResponse(ctx, done)
-	
-	return ctx, nil
-}
-	
-func (handler *ProxyRequestHandler) returnResponse(ctx context.Context, done func()) {
-	defer done()
 	
 	if handler.ModifyResponse != nil {
 
@@ -284,7 +263,6 @@ func (handler *ProxyRequestHandler) returnResponse(ctx context.Context, done fun
 		}
 		
 	}
-
 	
 	handler.downstreamResponse.WriteHeader(handler.upstreamResponse.StatusCode)
 	io.Copy(handler.downstreamResponse, handler.upstreamResponse.Body)
@@ -459,7 +437,7 @@ func closeConnectionOnCtxDone(conn net.Conn,  ctx context.Context) {
 
 func (handler *ProxyRequestHandler) Close() error {
 	
-	if handler.upstreamResponse.Body != nil {
+	if handler.upstreamResponse != nil && handler.upstreamResponse.Body != nil {
 		handler.upstreamResponse.Body.Close()
 	}
 	return nil

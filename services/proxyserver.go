@@ -103,7 +103,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestHandler, err := proxy.GetProxyRequestAgent(w, r, proxy.Transport)
 	defer requestHandler.Close()
 	
-	rreqctx, err := requestHandler.IssueRequest(ctx)
+	rreqctx, err := requestHandler.ProxyRequest(ctx)
 	
 	if err != nil {
 		proxy.handleError(w, err)
@@ -116,21 +116,6 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if requestHandler.Err() != nil {
 		proxy.handleError(w, err)
-		return
-	}
-	
-	if requestHandler.CanCallIssueResponse() {
-		
-		respctx, err := requestHandler.IssueResponse(ctx)
-	
-		if err != nil {
-			proxy.handleError(w, err)
-			return
-		}
-	
-		select {
-			case <-respctx.Done():
-		}
 	}
 	
 	return
@@ -173,7 +158,7 @@ func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error) {
 	httpError, ok := err.(ProxyAgentError)
 	
 	if !ok {
-		proxy.emitHttpError(w, http.StatusInternalServerError, "Unknown internal server error. Error received was \"" + httpError.Error() + "\"", http.StatusText(http.StatusInternalServerError))
+		proxy.emitHttpError(w, http.StatusInternalServerError, "Unknown internal server error. Error received was \"" + err.Error() + "\"", http.StatusText(http.StatusInternalServerError))
 	} else {
 		
 		abortRequest := httpError.AbortRequest()
