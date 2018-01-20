@@ -36,28 +36,29 @@ type ContentPolicyServerHook struct {
 
 	//RW mutex to control access to this structure
 	Mutex sync.RWMutex
+	
+	Next func(context services.ProxyRequest) error
 }
 
-func (instance *ContentPolicyServerHook) Hook(context *services.ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
+func (instance *ContentPolicyServerHook) Hook(context services.ProxyRequest) error {
 
 	instance.Mutex.RLock()
 	defer instance.Mutex.RUnlock()
 
-	var rsr *http.Request = context.UpstreamRequest
-	var w http.ResponseWriter = context.DownstreamResponse
+	var rsr *http.Request = context.UpstreamRequest()
+	var w http.ResponseWriter = context.DownstreamResponse()
 
 	if instance.HostAccessControl != nil {
 		var requestHost string = GetRequestHost(rsr)
 		if !instance.HostAccessControl.AllowHost(requestHost) {
 			PassiveAggressiveBlockRequest(w)
-			connHijacked = true
-			return
+			return services.ProxyHTTPTransactionHandled
 		}
 	}
 
 	//Don't run path access control on connect. It makes no sense.
 	if rsr.Method == http.MethodConnect {
-		return
+		return instance.runNextHook(context)
 	}
 
 	if instance.PathAccessControl != nil {
@@ -66,27 +67,35 @@ func (instance *ContentPolicyServerHook) Hook(context *services.ProxyChainContex
 
 		filterHost, ok = GetRequestFilterHost(rsr, instance.FilterOnReferFreeRequests)
 		if !ok {
-			return
+			return instance.runNextHook(context)
 		}
 
-		var requestTypeBitMap int64 = SniffRequestType(rsr, context.UpstreamResponse)
+		var requestTypeBitMap int64 = SniffRequestType(rsr, context.UpstreamResponse())
 		var isThirdParty bool = IsThirdParty(rsr)
 		var path string = GetRequestPath(rsr)
 		var block bool
 
-		block, err = instance.PathAccessControl.EvaluateRequest(filterHost, path, isThirdParty, requestTypeBitMap)
+		block, err := instance.PathAccessControl.EvaluateRequest(filterHost, path, isThirdParty, requestTypeBitMap)
 		if err != nil {
-			return
+			return err
 		}
 
 		if block {
 			PassiveAggressiveBlockRequest(w)
-			connHijacked = true
-			return
+			return services.ProxyHTTPTransactionHandled
 		}
 	}
 
-	return
+	return instance.runNextHook(context)
+}
+
+func (instance *ContentPolicyServerHook) runNextHook(context services.ProxyRequest) error {
+	if instance.Next != nil {
+		return instance.Next(context)
+	}
+	
+	return nil
+	
 }
 
 func SniffRequestType(r *http.Request, resp *http.Response) int64 {
