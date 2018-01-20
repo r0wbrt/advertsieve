@@ -84,6 +84,20 @@ type ProxyRequestHandler struct {
 	err error
 }
 
+func NewProxyAgentWithHandlers(ModifyRequest, ModifyResponse func(agent ProxyRequest) error) func(http.ResponseWriter, *http.Request, ProxyTransport) (*ProxyRequestHandler, error) {
+	return func(w http.ResponseWriter, r *http.Request, transport ProxyTransport) (*ProxyRequestHandler, error) {
+		h, e := NewProxyAgent(w, r, transport)
+		if e != nil {
+			return h,e
+		}
+		
+		h.ModifyRequest = ModifyRequest
+		h.ModifyResponse = ModifyResponse
+		
+		return h, nil
+	}
+}
+
 func NewProxyAgent(w http.ResponseWriter, r *http.Request, transport ProxyTransport) (*ProxyRequestHandler, error) {
 	
 	handler := &ProxyRequestHandler {
