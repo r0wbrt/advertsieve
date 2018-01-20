@@ -207,7 +207,7 @@ func (handler *ProxyRequestHandler) issueHttpRequest(ctx context.Context, done f
 	
 	defer done()
 	
-	resp, err := handler.transport.RoundTrip(handler.upstreamRequest, ctx)
+	resp, err := handler.transport.RoundTrip(handler.upstreamRequest.WithContext(ctx))
 	if err != nil {
 		handler.err = err
 		return
@@ -229,8 +229,6 @@ func (handler *ProxyRequestHandler) issueHttpRequest(ctx context.Context, done f
 func (handler *ProxyRequestHandler) IssueResponse(ctx context.Context) (context.Context, error) {
 	ctx, done := context.WithCancel(ctx)
 	
-	w := handler.downstreamResponse
-	
 	if !handler.canCallIssueResponse {
 		return nil, &proxyRequestError{abortRequest: true, internalErrorString: "Issue response can not be called upon this kind of request or is not ready to be called"}
 	}
@@ -242,6 +240,38 @@ func (handler *ProxyRequestHandler) IssueResponse(ctx context.Context) (context.
 	
 func (handler *ProxyRequestHandler) returnResponse(ctx context.Context, done func()) {
 	defer done()
+	
+	if handler.ModifyResponse != nil {
+
+		err := handler.ModifyResponse(handler)
+		
+		if err != nil {
+			
+			if err == ProxyHTTPTransactionHandled {
+				err = nil
+			} else if err == AbortProxyRequest {
+				err = &proxyRequestError {
+					skipLogging: true,
+					abortRequest: true,
+					sourceError: err, 
+					internalErrorString: err.Error(),
+				}
+			} else {
+				err = &proxyRequestError{ 
+					sourceError: err, 
+					internalErrorString: "Something went wrong with the after request HTTP hook", 
+					externalErrorString: "Internal Server Error", 
+					httpErrorCode: http.StatusInternalServerError, 
+				}
+			}
+			
+			handler.err = err
+			return
+		}
+		
+	}
+
+	
 	handler.downstreamResponse.WriteHeader(handler.upstreamResponse.StatusCode)
 	io.Copy(handler.downstreamResponse, handler.upstreamResponse.Body)
 }
@@ -253,7 +283,7 @@ func (handler *ProxyRequestHandler) proxyConnect(ctx context.Context, done func(
 }
 
 func (handler *ProxyRequestHandler) proxyWebsocket(ctx context.Context, done func()) {	
-	done()
+	defer done()
 	
 	var buf bytes.Buffer
 	var tls bool = false

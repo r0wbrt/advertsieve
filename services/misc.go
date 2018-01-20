@@ -26,29 +26,39 @@ import (
 
 type DetectHTTPLoop struct {
 	Hostname string
+	Next func(context ProxyRequest) error
 }
 
-func (config *DetectHTTPLoop) Hook(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
+func (config *DetectHTTPLoop) Hook(context ProxyRequest) error {
 
-	viaHeader := context.UpstreamRequest.Header.Get("Via")
+	viaHeader := context.UpstreamRequest().Header.Get("Via")
 
 	if strings.Contains(viaHeader, config.Hostname) {
-		connHijacked = true
-		http.Error(context.DownstreamResponse, http.StatusText(http.StatusLoopDetected), http.StatusLoopDetected)
+		http.Error(context.DownstreamResponse(), http.StatusText(http.StatusLoopDetected), http.StatusLoopDetected)
+		return ProxyHTTPTransactionHandled
 	} else {
 		if viaHeader != "" {
 			viaHeader = viaHeader + ", "
 		}
 
 		viaHeader = viaHeader + "HTTP/1.1 " + config.Hostname
-		context.UpstreamRequest.Header.Set("Via", viaHeader)
+		context.UpstreamRequest().Header.Set("Via", viaHeader)
 	}
 
-	return
+	if config.Next != nil {
+		return config.Next(context)
+	} else {
+		return nil
+	}
+	
 }
 
-func PreventConnectionsToLocalhost(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error) {
-	var host string = context.UpstreamRequest.URL.Hostname()
+type PreventConnectionsToLocalhost struct {
+	Next func(context ProxyRequest) error
+}
+
+func (config *PreventConnectionsToLocalhost) Hook(context ProxyRequest) error {
+	var host string = context.UpstreamRequest().URL.Hostname()
 	var ip net.IP = net.ParseIP(host)
 
 	//Originally was doing a DNS lookup on all hostnames to see if they resolved
@@ -56,11 +66,15 @@ func PreventConnectionsToLocalhost(context *ProxyChainContext) (stopProcessingCh
 	//extra DNS latency. We also expect the server this is set up on to be
 	//set up properly and not have extra HOST entries that resolve to localhost.
 	if host == "localhost" || ip != nil && ip.IsLoopback() {
-		connHijacked = true
-		http.Error(context.DownstreamResponse, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(context.DownstreamResponse(), http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return ProxyHTTPTransactionHandled
 	}
-
-	return
+	
+	if config.Next != nil {
+		return config.Next(context)
+	} else {
+		return nil
+	}
 }
 
 func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration, kthTry int) {

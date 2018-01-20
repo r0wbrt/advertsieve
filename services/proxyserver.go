@@ -13,36 +13,17 @@
  * limitations under the License.
  */
 
-//The proxy package implements a http proxy that supports hooks to modify the
-//request and response. The package also provides basic functionality for
-//implementing a https interception proxy which generates https certs on the fly
-//for each request via TLSCertGen.
 package services
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
-	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
-	"sync"
-	"time"
 )
 
 const proxyErrorPrefix = "Proxy Core Server: "
-const proxyComponentError = "Proxy Handler Error: "
 
-
-//Proxy server is an implementation of a http proxy server using go's http 
-//library. The proxy server exposes a pre and post request hook to allow 
-//modification of the server's behavior. The primary use of this server
-//is to support content filtering in the advertsieve project. 
-//
-//By default, this server disables http/2.0, however it can be turned back on
-//by modifying the TLS config.
 type ProxyServer struct {
 
 	//When set to true, the proxy permit tcp tunneling through this web server.
@@ -64,9 +45,12 @@ type ProxyServer struct {
 	//Transport used to dial TCP and http requests
 	Transport ProxyTransport
 	
-	shutdownChannelGuard sync.Mutex
-	shutdownChannelClosed bool
-	shutdownChannel chan interface{} 
+	//Root Context used to shutdown the server
+	ctx context.Context
+	
+	//Function used to close the context and shutdown the server
+	shutdownFunc func()
+	
 }
 
 //Creates a new proxy server and sets up any hidden fields on ProxyServer.
@@ -75,12 +59,19 @@ func NewProxyServer() (proxy *ProxyServer) {
 
 	proxy.AllowWebsocket = true
 	proxy.GetProxyRequestAgent = NewProxyAgent
-	proxy.shutdownChannel = make(chan interface{})
 	proxy.MsgLogger = log.New(os.Stderr, "", log.Lmicroseconds|log.Ldate)
 	
-	proxy.Transport = NewProxyTransport()
+	proxy.Transport = NewProxyServerTransport()
+	
+	proxy.ctx, proxy.shutdownFunc = context.WithCancel(context.Background())
 	
 	return
+}
+
+//Shutdown the server interrupting all active http transactions
+func (proxy *ProxyServer) Close() error {
+	proxy.shutdownFunc()
+	return nil
 }
 
 func (proxy *ProxyServer) emitHttpError(w http.ResponseWriter, code int, internalMessage string, externalMessage string) {
@@ -93,7 +84,7 @@ func (proxy *ProxyServer) emitHttpError(w http.ResponseWriter, code int, interna
 //Standard function that handles a proxy request.
 func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	
-	if proxy.shutdownChannelClosed {
+	if proxy.ctx.Err() != nil {
 		panic(http.ErrAbortHandler)
 	}
 	
@@ -101,11 +92,18 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
+	//Link this to the core proxy context so if the server
+	//is shutdown, the close is propagated to all child
+	//transactions.
+	ctx, cancel := context.WithCancel(proxy.ctx)
+	go shutdownReqCtx(r.Context(), ctx, cancel)
+	
+	defer cancel() //Must call cancel to prevent resource leaks
+	
 	requestHandler, err := proxy.GetProxyRequestAgent(w, r, proxy.Transport)
 	defer requestHandler.Close()
 	
-	ctx, cancel := context.WithCancel(context.Background())
-	ctx, err = requestHandler.IssueRequest(ctx)
+	rreqctx, err := requestHandler.IssueRequest(ctx)
 	
 	if err != nil {
 		proxy.handleError(w, err)
@@ -113,10 +111,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	select {
-		case <-ctx.Done():
-		case <-proxy.shutdownChannel:
-			cancel()
-			panic(http.ErrAbortHandler)
+		case <-rreqctx.Done():
 	}
 
 	if requestHandler.Err() != nil {
@@ -126,8 +121,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	
 	if requestHandler.CanCallIssueResponse() {
 		
-		ctx, cancel = context.WithCancel(context.Background())
-		ctx, err := requestHandler.IssueResponse(ctx)
+		respctx, err := requestHandler.IssueResponse(ctx)
 	
 		if err != nil {
 			proxy.handleError(w, err)
@@ -135,11 +129,20 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	
 		select {
-			case <-ctx.Done():
-			case <-proxy.shutdownChannel:
-				cancel()
-				panic(http.ErrAbortHandler)
+			case <-respctx.Done():
 		}
+	}
+	
+	return
+}
+
+func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, cancel func() ) {
+	select {
+			case <- requestctx.Done():
+				cancel()
+				
+			case <- handlerctx.Done():
+				//No operation
 	}
 	
 	return
@@ -194,8 +197,7 @@ func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error) {
 		if abortRequest {
 			panic(http.ErrAbortHandler)
 		}
-		
-		
+				
 		http.Error(w, httpError.ExternalErrorString(), httpError.ErrorCode())
 	}
 }

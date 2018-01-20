@@ -14,7 +14,7 @@ type ProxyTransport interface {
 	Dial(host string, tls bool, ctx context.Context) (net.Conn, error)
 	
 	//Handles a http request.
-	RoundTrip(request *http.Request, ctx context.Context) (*http.Response, error)
+	RoundTrip(request *http.Request) (*http.Response, error)
 }
 
 type ProxyServerTransport struct {
@@ -156,7 +156,7 @@ func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response
 		//Do Nothing
 	}
 }*/
-func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress string, tlsConn bool) (conn net.Conn, err error) {
+func (proxy *ProxyServerTransport) Dial(remoteAddress string, tlsConn bool, ctx context.Context) (conn net.Conn, err error) {
 
 	var counter int = 0
 	var start time.Time = time.Now()
@@ -171,7 +171,7 @@ func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress str
 			conn, err = net.Dial("tcp", remoteAddress)
 		}
 
-		if err != nil {
+		if err == nil {
 			return
 		}
 
@@ -194,6 +194,17 @@ func (proxy *ProxyServer) attemptTcpConnectionToUpstreamServer(remoteAddress str
 			return
 		}
 
+		//Cancel request if client has disconnected
+		select {
+		case <-ctx.Done():
+			return nil, &proxyRequestError {
+				err: nil,
+				skipLogging: true,
+				abortRequest: true,
+			}
+		default:
+		}
+		
 		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
 	}
 }
