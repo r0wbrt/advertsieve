@@ -115,7 +115,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if requestHandler.Err() != nil {
-		proxy.handleError(w, err)
+		proxy.handleError(w, requestHandler.Err())
 	}
 	
 	return
