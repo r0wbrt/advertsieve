@@ -155,6 +155,11 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 }
 
 func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error) {
+	
+	if err == nil {
+		panic("expected non nil error")
+	}
+	
 	httpError, ok := err.(ProxyAgentError)
 	
 	if !ok {
