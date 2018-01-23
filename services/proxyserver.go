@@ -27,9 +27,8 @@ import (
 	"errors"
 )
 
-const proxyErrorPrefix = "Proxy Core Server: "
 var ErrRequestHijacked error = errors.New("Proxy Server: The InterceptResponse function has handled the request")
-
+const logFormat = "Proxy Server: Error on path \"%s\" sent by \"%s\" : %s"
 
 type ProxyServer struct {
 
@@ -52,6 +51,9 @@ type ProxyServer struct {
 	//Transport used to dial TCP and http requests
 	Transport ProxyTransport
 	
+	//Function that can modify the response before before it is sent to the client.
+	//This function can also handle the entire response and the function indicates this
+	//by returning ErrRequestHijacked.
 	InterceptResponse func(http.ResponseWriter, *http.Request, *http.Response) error
 	
 	//Root Context used to shutdown the server
@@ -59,7 +61,6 @@ type ProxyServer struct {
 	
 	//Function used to close the context and shutdown the server
 	shutdownFunc func()
-	
 }
 
 //Creates a new proxy server and sets up any hidden fields on ProxyServer.
@@ -157,7 +158,7 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	toClientConn, _, err := hj.Hijack()
 
 	if err != nil {
-		proxy.MsgLogger.Println("Proxy Server: Could not hijack client request: " + err.Error())
+		proxy.MsgLogger.Printf("Proxy Server: Could not hijack client request: %s", err.Error())
 		panic(http.ErrAbortHandler)
 	}
 
@@ -171,7 +172,7 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	if writeOK {
 		_, err = toClientConn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
 		if err != nil {
-			proxy.MsgLogger.Println("Proxy Server: attempting to write 200 ok to the connection failed: " + err.Error())
+			proxy.MsgLogger.Printf("Proxy Server: attempting to write 200 ok to the connection failed: %s", err.Error())
 			panic(http.ErrAbortHandler)
 		}
 			
@@ -199,7 +200,7 @@ func (handler *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGr
 		neterr, ok := err.(net.Error)
 
 		if !ok || !neterr.Timeout() {
-			handler.MsgLogger.Println("Proxy Server: unexpected error while piping data between two connections as part of a websocket or connect request: " + err.Error())
+			handler.MsgLogger.Printf("Proxy Server: unexpected error while piping data between two connections as part of a websocket or connect request: %s", err.Error())
 		}
 	}
 }
@@ -232,14 +233,14 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 	//     		  access control operations?
 	
 	if r.Method == http.MethodConnect && !proxy.AllowConnect {
-		proxy.MsgLogger.Printf("Proxy Server: Error on path \"%s\" sent by \"%s\" : %s", r.URL.String(), r.RemoteAddr, "Connect is disabled")
+		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, "Connect is disabled")
 		return false
 	}
 
 	isWebSocket := IsWebSocketRequest(r)
 
 	if isWebSocket && !proxy.AllowWebsocket {
-		proxy.MsgLogger.Printf("Proxy Server: Error on path \"%s\" sent by \"%s\" : %s", r.URL.String(), r.RemoteAddr, "Websocket is disabled")
+		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, "Websocket is disabled")
 		return false
 	}
 
@@ -269,7 +270,7 @@ func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error, r *http.
 	http.Error(w, http.StatusText(statusCode), statusCode)
 	
 	if message != "" {
-		proxy.MsgLogger.Printf("Proxy Server: Error on path \"%s\" sent by \"%s\" : %s", r.URL.String(), r.RemoteAddr, message)
+		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, message)
 	}
 }
 
