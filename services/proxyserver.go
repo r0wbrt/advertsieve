@@ -20,6 +20,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"io"
+	"net"
+	"sync"
+	"time"
 )
 
 const proxyErrorPrefix = "Proxy Core Server: "
@@ -38,9 +42,9 @@ type ProxyServer struct {
 	//Logger used to handle messages generated during the operation of the proxy
 	//server.
 	MsgLogger *log.Logger
-
-	//Function to get a proxy handler
-	GetProxyRequestAgent func(w http.ResponseWriter, r *http.Request, transport ProxyTransport) (*ProxyRequestHandler, error)
+	
+	//The agent which takes a request and gets a response from the remote server
+	ProxyAgent HttpProxyAgent
 
 	//Transport used to dial TCP and http requests
 	Transport ProxyTransport
@@ -58,10 +62,10 @@ func NewProxyServer() (proxy *ProxyServer) {
 	proxy = new(ProxyServer)
 
 	proxy.AllowWebsocket = true
-	proxy.GetProxyRequestAgent = NewProxyAgent
 	proxy.MsgLogger = log.New(os.Stderr, "", log.Lmicroseconds|log.Ldate)
 	
 	proxy.Transport = NewProxyServerTransport()
+	proxy.ProxyAgent = &ProxyServerAgent{Transport: proxy.Transport}
 	
 	proxy.ctx, proxy.shutdownFunc = context.WithCancel(context.Background())
 	
@@ -96,30 +100,111 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//is shutdown, the close is propagated to all child
 	//transactions.
 	ctx, cancel := context.WithCancel(proxy.ctx)
-	go shutdownReqCtx(r.Context(), ctx, cancel)
-	
 	defer cancel() //Must call cancel to prevent resource leaks
 	
-	requestHandler, err := proxy.GetProxyRequestAgent(w, r, proxy.Transport)
-	defer requestHandler.Close()
+	go shutdownReqCtx(r.Context(), ctx, cancel)
 	
-	rreqctx, err := requestHandler.ProxyRequest(ctx)
+	resp, err := proxy.ProxyAgent.RoundTrip(r)
 	
 	if err != nil {
-		proxy.handleError(w, err)
-		return
-	}
-	
-	select {
-		case <-rreqctx.Done():
-	}
-
-	if requestHandler.Err() != nil {
-		proxy.handleError(w, requestHandler.Err())
+		if err == ErrUseConnect {
+			conn, err := proxy.ProxyAgent.Connect(r)
+			if err != nil {
+				proxy.handleError(w, err)
+			} else{
+				proxy.proxyTcpConnection(w, conn, !IsWebSocketRequest(r), ctx)
+			}
+		} else {
+			proxy.handleError(w, err)	
+		}
+	} else {
+		defer resp.Body.Close()
+		CopyBackProxyResponse(w, resp)
 	}
 	
 	return
 }
+
+func CopyBackProxyResponse(w http.ResponseWriter, r *http.Response) {
+	
+	for k, v := range r.Header {
+			values := append([]string(nil), v...)
+			w.Header()[k] = values
+	}
+	
+	w.WriteHeader(r.StatusCode)
+	io.Copy(w, r.Body)
+}
+
+func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteServerConn net.Conn, writeOK bool, ctx context.Context) {
+	
+	defer fromRemoteServerConn.Close()
+	
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		proxy.MsgLogger.Println("Hijacking not supported by your implementation")
+		panic(http.ErrAbortHandler)
+	}
+
+
+	toClientConn, _, err := hj.Hijack()
+
+	if err != nil {
+		panic("Proxy Server: Could not hijack client request: " + err.Error())
+		panic(http.ErrAbortHandler)
+	}
+
+	defer toClientConn.Close()
+
+	//Clear timeouts
+	toClientConn.SetDeadline(time.Time{})
+	toClientConn.SetReadDeadline(time.Time{})
+	toClientConn.SetWriteDeadline(time.Time{})
+	
+	if writeOK {
+		_, err = toClientConn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
+		if err != nil {
+			proxy.MsgLogger.Println("Proxy Server: attempting to write 200 ok to the connection failed: " + err.Error())
+			panic(http.ErrAbortHandler)
+		}
+			
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go proxy.pipeConn(toClientConn, fromRemoteServerConn, &wg)
+	go proxy.pipeConn(fromRemoteServerConn, toClientConn, &wg)
+
+	go closeConnectionOnCtxDone(toClientConn, ctx)
+	go closeConnectionOnCtxDone(fromRemoteServerConn, ctx)
+	
+	wg.Wait()
+}
+
+func (handler *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	_, err := io.Copy(to, from)
+	if err != nil {
+
+		//Suppress error logging from TCP connections closes
+		neterr, ok := err.(net.Error)
+
+		if !ok || !neterr.Timeout() {
+			handler.MsgLogger.Println("Proxy Server: unexpected error while piping data between two connections as part of a websocket or connect request: " + err.Error())
+		}
+	}
+}
+
+func closeConnectionOnCtxDone(conn net.Conn,  ctx context.Context) {
+	select {
+		case <- ctx.Done():
+	}
+	
+	conn.Close()
+}
+
 
 func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, cancel func() ) {
 	select {

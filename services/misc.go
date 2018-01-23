@@ -88,6 +88,30 @@ func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration,
 	time.Sleep(setPause + waitDuration)
 }
 
+func RemoveBodyFromRequest(rsr *http.Request) {
+	
+	//Per RFC specs, if neither of these fields are set, the request should not 
+	//have a body.
+	if rsr.Header.Get("Content-Length") == "" && rsr.Header.Get("Transfer-Encoding") == "" {
+		rsr.Body = nil
+	}
+
+	//(*r0wbrt) - Per RFC specs, these methods should not have a body. In theory they could
+	//			  but in practice they do not. Since any request could have a body, it is not safe
+	//			  to just nil the body just because these methods are in use so instead
+	//			  Log a warning.
+	//
+	//			  Cloud flare CDN servers will return a malform request error if 
+	//			  body is defined on a GET request.
+	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
+		
+		if rsr.Body != nil {
+			//TODO (r0wbrt) - Add back if agents gain ability to log
+			//handler.transport.LogMessage("Warning, http method " + rsr.Method + " for resource " + rsr.URL.String() + " has a body. This could cause problems with upstream servers.")
+		}
+	}
+}
+
 // Copyright 2011 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
