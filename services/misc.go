@@ -26,39 +26,35 @@ import (
 
 type DetectHTTPLoop struct {
 	Hostname string
-	Next func(context ProxyRequest) error
+	Next func(http.ResponseWriter, *http.Request)
 }
 
-func (config *DetectHTTPLoop) Hook(context ProxyRequest) error {
+func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	viaHeader := context.UpstreamRequest().Header.Get("Via")
+	viaHeader := r.Header.Get("Via")
 
 	if strings.Contains(viaHeader, config.Hostname) {
-		http.Error(context.DownstreamResponse(), http.StatusText(http.StatusLoopDetected), http.StatusLoopDetected)
-		return ProxyHTTPTransactionHandled
+		http.Error(w, http.StatusText(http.StatusLoopDetected), http.StatusLoopDetected)
 	} else {
 		if viaHeader != "" {
 			viaHeader = viaHeader + ", "
 		}
 
 		viaHeader = viaHeader + "HTTP/1.1 " + config.Hostname
-		context.UpstreamRequest().Header.Set("Via", viaHeader)
+		r.Header.Set("Via", viaHeader)
 	}
 
 	if config.Next != nil {
-		return config.Next(context)
-	} else {
-		return nil
+		config.Next(w, r)
 	}
-	
 }
 
 type PreventConnectionsToLocalhost struct {
-	Next func(context ProxyRequest) error
+	Next func(http.ResponseWriter, *http.Request)
 }
 
-func (config *PreventConnectionsToLocalhost) Hook(context ProxyRequest) error {
-	var host string = context.UpstreamRequest().URL.Hostname()
+func (config *PreventConnectionsToLocalhost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var host string = r.Host
 	var ip net.IP = net.ParseIP(host)
 
 	//Originally was doing a DNS lookup on all hostnames to see if they resolved
@@ -66,15 +62,15 @@ func (config *PreventConnectionsToLocalhost) Hook(context ProxyRequest) error {
 	//extra DNS latency. We also expect the server this is set up on to be
 	//set up properly and not have extra HOST entries that resolve to localhost.
 	if host == "localhost" || ip != nil && ip.IsLoopback() {
-		http.Error(context.DownstreamResponse(), http.StatusText(http.StatusForbidden), http.StatusForbidden)
-		return ProxyHTTPTransactionHandled
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
 	}
 	
 	if config.Next != nil {
-		return config.Next(context)
-	} else {
-		return nil
-	}
+		config.Next(w, r)
+	} 
+	
+	return
 }
 
 func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration, kthTry int) {
