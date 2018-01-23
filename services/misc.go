@@ -26,7 +26,7 @@ import (
 
 type DetectHTTPLoop struct {
 	Hostname string
-	Next func(http.ResponseWriter, *http.Request)
+	Next     func(http.ResponseWriter, *http.Request)
 }
 
 func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -65,11 +65,11 @@ func (config *PreventConnectionsToLocalhost) ServeHTTP(w http.ResponseWriter, r 
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
-	
+
 	if config.Next != nil {
 		config.Next(w, r)
-	} 
-	
+	}
+
 	return
 }
 
@@ -85,8 +85,8 @@ func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration,
 }
 
 func RemoveBodyFromRequest(rsr *http.Request) {
-	
-	//Per RFC specs, if neither of these fields are set, the request should not 
+
+	//Per RFC specs, if neither of these fields are set, the request should not
 	//have a body.
 	if rsr.Header.Get("Content-Length") == "" && rsr.Header.Get("Transfer-Encoding") == "" {
 		rsr.Body = nil
@@ -97,10 +97,10 @@ func RemoveBodyFromRequest(rsr *http.Request) {
 	//			  to just nil the body just because these methods are in use so instead
 	//			  Log a warning.
 	//
-	//			  Cloud flare CDN servers will return a malform request error if 
+	//			  Cloud flare CDN servers will return a malform request error if
 	//			  body is defined on a GET request.
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
-		
+
 		if rsr.Body != nil {
 			//TODO (r0wbrt) - Add back if agents gain ability to log
 			//handler.transport.LogMessage("Warning, http method " + rsr.Method + " for resource " + rsr.URL.String() + " has a body. This could cause problems with upstream servers.")

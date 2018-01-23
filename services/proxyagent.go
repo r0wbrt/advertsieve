@@ -1,12 +1,12 @@
 package services
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
 	"net"
 	"net/http"
-	"context"
-	"io"
-	"bytes"
-	"errors"
 	"reflect"
 )
 
@@ -16,8 +16,7 @@ var ErrBadRequest error = errors.New("HttpProxyAgent: Bad Request")
 var ErrBadGateway error = errors.New("HttpProxyAgent: Request could not be completed since the upstream server could not be reached")
 
 type HttpProxyAgent interface {
-	
-	Connect(*http.Request) (net.Conn, error)	
+	Connect(*http.Request) (net.Conn, error)
 	RoundTrip(*http.Request) (*http.Response, error)
 }
 
@@ -26,7 +25,7 @@ type ProxyServerAgent struct {
 }
 
 var defaultTransport ProxyTransport = NewProxyServerTransport()
-var defaultProxyAgent *ProxyServerAgent = &ProxyServerAgent { Transport: NewProxyServerTransport() }
+var defaultProxyAgent *ProxyServerAgent = &ProxyServerAgent{Transport: NewProxyServerTransport()}
 
 func Connect(r *http.Request) (net.Conn, error) {
 	return defaultProxyAgent.Connect(r)
@@ -37,23 +36,23 @@ func RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func (agent *ProxyServerAgent) Connect(r *http.Request) (net.Conn, error) {
-	
+
 	if !requiresConnect(r) {
 		return nil, ErrUseRoundTrip
 	}
-	
+
 	reqtosend, err := convertToProxyRequest(r)
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var conn net.Conn
-	
+
 	if IsWebSocketRequest(r) {
 		var buf bytes.Buffer
 		var tls bool = false
-		
+
 		reqtosend.Write(&buf)
 
 		tls = reqtosend.URL.Scheme == "https"
@@ -66,33 +65,33 @@ func (agent *ProxyServerAgent) Connect(r *http.Request) (net.Conn, error) {
 				host = host + ":80"
 			}
 		}
-		
-		conn, err = agent.proxyTCPTunnel(host, &buf, tls, reqtosend.Context())
+
+		conn, err = agent.openTCPTunnel(host, &buf, tls, reqtosend.Context())
 	} else {
-		conn, err = agent.proxyTCPTunnel(reqtosend.Host, nil, false, reqtosend.Context())
+		conn, err = agent.openTCPTunnel(reqtosend.Host, nil, false, reqtosend.Context())
 	}
-	
+
 	return conn, err
 }
 
 func (agent *ProxyServerAgent) RoundTrip(r *http.Request) (*http.Response, error) {
-	
+
 	if requiresConnect(r) {
 		return nil, ErrUseConnect
 	}
-	
+
 	reqtosend, err := convertToProxyRequest(r)
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	resp, err := agent.getTransport().RoundTrip(reqtosend)
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return resp, nil
 }
 
@@ -105,7 +104,7 @@ func (agent *ProxyServerAgent) getTransport() ProxyTransport {
 }
 
 func convertToProxyRequest(r *http.Request) (*http.Request, error) {
-	
+
 	path := *r.URL
 	if path.Host == "" {
 		path.Host = r.Host
@@ -114,7 +113,7 @@ func convertToProxyRequest(r *http.Request) (*http.Request, error) {
 	if r.Method != http.MethodConnect {
 		//Only support http(s) requests.
 		if r.URL.Scheme != "http" && r.URL.Scheme != "https" && r.URL.Scheme != "" {
-			
+
 			return nil, ErrBadRequest
 		}
 
@@ -126,13 +125,13 @@ func convertToProxyRequest(r *http.Request) (*http.Request, error) {
 			}
 		}
 	}
-	
+
 	newRequest, err := http.NewRequest(r.Method, path.String(), r.Body)
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	for k, v := range r.Header {
 		values := append([]string(nil), v...)
 		newRequest.Header[k] = values
@@ -140,22 +139,22 @@ func convertToProxyRequest(r *http.Request) (*http.Request, error) {
 
 	//Remove headers that should not be forwarded to the remote server.
 	RemoveHopByHopHeaders(&newRequest.Header)
-	
+
 	//Remove body if it should not be present
 	RemoveBodyFromRequest(newRequest)
-	
+
 	//Add back hop-by-hop headers needed to establish a websocket connection.
 	if IsWebSocketRequest(r) {
 		newRequest.Header.Add("Connection", "Upgrade")
 		newRequest.Header.Add("Upgrade", "websocket")
 	}
-	
+
 	newRequest.ContentLength = r.ContentLength
-	
+
 	return newRequest, nil
 }
 
-func (agent *ProxyServerAgent) proxyTCPTunnel(remoteAddress string, preambleWriter io.Reader, tlsConn bool, ctx context.Context) (net.Conn, error){
+func (agent *ProxyServerAgent) openTCPTunnel(remoteAddress string, preambleWriter io.Reader, tlsConn bool, ctx context.Context) (net.Conn, error) {
 
 	conn, err := agent.getTransport().Dial(remoteAddress, tlsConn, ctx)
 
@@ -170,10 +169,10 @@ func (agent *ProxyServerAgent) proxyTCPTunnel(remoteAddress string, preambleWrit
 			return nil, err
 		}
 	}
-	
+
 	return conn, nil
 }
 
 func requiresConnect(r *http.Request) bool {
-	return r.Method == http.MethodConnect || IsWebSocketRequest(r) 
+	return r.Method == http.MethodConnect || IsWebSocketRequest(r)
 }

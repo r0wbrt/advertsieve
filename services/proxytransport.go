@@ -1,24 +1,24 @@
 package services
 
 import (
-	"net/http"
 	"context"
-	"net"
 	"crypto/tls"
+	"net"
+	"net/http"
 	"time"
 )
 
 type ProxyTransport interface {
-	
+
 	//Dials a connection
 	Dial(host string, tls bool, ctx context.Context) (net.Conn, error)
-	
+
 	//Handles a http request.
 	RoundTrip(request *http.Request) (*http.Response, error)
 }
 
 type ProxyServerTransport struct {
-	
+
 	//Round Tripper used to make HTTP requests. By default this is set to
 	//http.Transport and uses the initial instance of TlsConfig on this structure for its
 	//TLS configuration.
@@ -26,20 +26,20 @@ type ProxyServerTransport struct {
 	//Default configuration:
 	//	proxy.Transport = &http.Transport{
 	//	TLSHandshakeTimeout:   time.Duration(10) * time.Second,
-    //	MaxIdleConns:          128,
-    //	IdleConnTimeout:       time.Duration(2) * time.Minute,
+	//	MaxIdleConns:          128,
+	//	IdleConnTimeout:       time.Duration(2) * time.Minute,
 	//	ExpectContinueTimeout: time.Duration(1) * time.Second,
 	//	ResponseHeaderTimeout: time.Duration(30) * time.Second,
 	//	TLSClientConfig:       proxy.TlsConfig,
 	//	TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
 	//}
 	Transport http.RoundTripper
-	
+
 	//Tls config used by proxy to make upstream TLS connections. Note,
 	//if the instance of this field is replaced with a new instance of tls.Config,
-	//the tls config, if one exists, on Transport will not be updated. 
+	//the tls config, if one exists, on Transport will not be updated.
 	TlsConfig *tls.Config
-	
+
 	//Maximum number of attempts to contact upstream server. Set to zero by
 	//default meaning the server will keep attempting to connect to the remote
 	//server until it runs out of time.
@@ -56,13 +56,12 @@ type ProxyServerTransport struct {
 	//Time duration to multiply the exponential back off coefficient by. Set to
 	//500ms by default.
 	RetryBackoffCoefficient time.Duration
-	
 }
 
 func NewProxyServerTransport() (serverTransport *ProxyServerTransport) {
-	
+
 	serverTransport = &ProxyServerTransport{}
-	
+
 	serverTransport.Transport = &http.Transport{
 		TLSHandshakeTimeout:   time.Duration(10) * time.Second,
 		MaxIdleConns:          128,
@@ -72,25 +71,25 @@ func NewProxyServerTransport() (serverTransport *ProxyServerTransport) {
 		TLSClientConfig:       serverTransport.TlsConfig,
 		TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
 	}
-	
+
 	serverTransport.TlsConfig = SecureTLSConfig()
 	serverTransport.MaxNumberOfConnectAttempts = 0
 	serverTransport.MaxTimeTryingToConnect = time.Duration(30) * time.Second
 	serverTransport.MinRequestRetryTimeout = 0
 	serverTransport.RetryBackoffCoefficient = time.Duration(500) * time.Millisecond
-	
+
 	return
 }
-	
+
 func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response, error) {
 
 	var counter int = 0
 	var start time.Time = time.Now()
 
 	for {
-		
+
 		counter += 1
-		
+
 		ctx := rsr.Context()
 		rresp, err := sTrans.Transport.RoundTrip(rsr)
 
@@ -103,7 +102,7 @@ func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response
 		}
 
 		now := time.Now()
-		
+
 		if sTrans.MaxTimeTryingToConnect != 0 && now.Sub(start) >= sTrans.MaxTimeTryingToConnect {
 			return nil, err
 		}
@@ -181,8 +180,7 @@ func (proxy *ProxyServerTransport) Dial(remoteAddress string, tlsConn bool, ctx 
 			return nil, ctx.Err()
 		default:
 		}
-		
+
 		exponentialBackoffPause(proxy.MinRequestRetryTimeout, proxy.RetryBackoffCoefficient, counter)
 	}
 }
-

@@ -17,24 +17,34 @@ package services
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
-	"io"
-	"net"
 	"sync"
 	"time"
-	"errors"
 )
 
 var ErrRequestHijacked error = errors.New("Proxy Server: The InterceptResponse function has handled the request")
+
 const logFormat = "Proxy Server: Error on path \"%s\" sent by \"%s\" : %s"
+
+type ProxyAgentError interface {
+
+	//Error to write to the log
+	Error() string
+
+	//HTTP error code to send.
+	ErrorCode() int
+}
 
 type ProxyServer struct {
 
 	//When set to true, the proxy permit tcp tunneling through this web server.
 	//If set to false, CONNECT method will be rejected. This is set to false
-	//by default because of its potential for abuse. 
+	//by default because of its potential for abuse.
 	AllowConnect bool
 
 	//When set to true, websocket upgrade requests will be passed through this proxy.
@@ -44,21 +54,21 @@ type ProxyServer struct {
 	//Logger used to handle messages generated during the operation of the proxy
 	//server.
 	MsgLogger *log.Logger
-	
+
 	//The agent which takes a request and gets a response from the remote server
 	ProxyAgent HttpProxyAgent
 
 	//Transport used to dial TCP and http requests
 	Transport ProxyTransport
-	
+
 	//Function that can modify the response before before it is sent to the client.
 	//This function can also handle the entire response and the function indicates this
 	//by returning ErrRequestHijacked.
 	InterceptResponse func(http.ResponseWriter, *http.Request, *http.Response) error
-	
+
 	//Root Context used to shutdown the server
 	ctx context.Context
-	
+
 	//Function used to close the context and shutdown the server
 	shutdownFunc func()
 }
@@ -69,12 +79,12 @@ func NewProxyServer() (proxy *ProxyServer) {
 
 	proxy.AllowWebsocket = true
 	proxy.MsgLogger = log.New(os.Stderr, "", log.Lmicroseconds|log.Ldate)
-	
+
 	proxy.Transport = NewProxyServerTransport()
 	proxy.ProxyAgent = &ProxyServerAgent{Transport: proxy.Transport}
-	
+
 	proxy.ctx, proxy.shutdownFunc = context.WithCancel(context.Background())
-	
+
 	return
 }
 
@@ -86,35 +96,35 @@ func (proxy *ProxyServer) Close() error {
 
 //Standard function that handles a proxy request.
 func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	
+
 	if proxy.ctx.Err() != nil {
 		panic(http.ErrAbortHandler)
 	}
-	
+
 	if !proxy.allowRequest(r, w) {
 		panic(http.ErrAbortHandler)
 	}
-	
+
 	//Link this to the core proxy context so if the server
 	//is shutdown, the close is propagated to all child
 	//transactions.
 	ctx, cancel := context.WithCancel(proxy.ctx)
 	defer cancel() //Must call cancel to prevent resource leaks
-	
+
 	go shutdownReqCtx(r.Context(), ctx, cancel)
-	
+
 	resp, err := proxy.ProxyAgent.RoundTrip(r)
-	
+
 	if err != nil {
 		if err == ErrUseConnect {
 			conn, err := proxy.ProxyAgent.Connect(r)
 			if err != nil {
 				proxy.handleError(w, err, r)
-			} else{
+			} else {
 				proxy.proxyTcpConnection(w, conn, !IsWebSocketRequest(r), ctx)
 			}
 		} else {
-			proxy.handleError(w, err, r)	
+			proxy.handleError(w, err, r)
 		}
 	} else {
 		defer resp.Body.Close()
@@ -124,36 +134,35 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				proxy.handleError(w, err, r)
 			}
 		}
-		
+
 		if err == nil {
 			CopyBackProxyResponse(w, resp)
-		} 
+		}
 	}
-	
+
 	return
 }
 
 func CopyBackProxyResponse(w http.ResponseWriter, r *http.Response) {
-	
+
 	for k, v := range r.Header {
-			values := append([]string(nil), v...)
-			w.Header()[k] = values
+		values := append([]string(nil), v...)
+		w.Header()[k] = values
 	}
-	
+
 	w.WriteHeader(r.StatusCode)
 	io.Copy(w, r.Body)
 }
 
 func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteServerConn net.Conn, writeOK bool, ctx context.Context) {
-	
+
 	defer fromRemoteServerConn.Close()
-	
+
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		proxy.MsgLogger.Println("Proxy Server: Hijacking not supported by your implementation")
 		panic(http.ErrAbortHandler)
 	}
-
 
 	toClientConn, _, err := hj.Hijack()
 
@@ -168,14 +177,14 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	toClientConn.SetDeadline(time.Time{})
 	toClientConn.SetReadDeadline(time.Time{})
 	toClientConn.SetWriteDeadline(time.Time{})
-	
+
 	if writeOK {
 		_, err = toClientConn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
 		if err != nil {
 			proxy.MsgLogger.Printf("Proxy Server: attempting to write 200 ok to the connection failed: %s", err.Error())
 			panic(http.ErrAbortHandler)
 		}
-			
+
 	}
 
 	var wg sync.WaitGroup
@@ -186,7 +195,7 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 
 	go closeConnectionOnCtxDone(toClientConn, ctx)
 	go closeConnectionOnCtxDone(fromRemoteServerConn, ctx)
-	
+
 	wg.Wait()
 }
 
@@ -205,24 +214,23 @@ func (handler *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGr
 	}
 }
 
-func closeConnectionOnCtxDone(conn net.Conn,  ctx context.Context) {
+func closeConnectionOnCtxDone(conn net.Conn, ctx context.Context) {
 	select {
-		case <- ctx.Done():
+	case <-ctx.Done():
 	}
-	
+
 	conn.Close()
 }
 
-
-func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, cancel func() ) {
+func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, cancel func()) {
 	select {
-			case <- requestctx.Done():
-				cancel()
-				
-			case <- handlerctx.Done():
-				//No operation
+	case <-requestctx.Done():
+		cancel()
+
+	case <-handlerctx.Done():
+		//No operation
 	}
-	
+
 	return
 }
 
@@ -231,7 +239,7 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 
 	//(*r0wbrt) - Should we expose a new proxy chain that could run here to perform
 	//     		  access control operations?
-	
+
 	if r.Method == http.MethodConnect && !proxy.AllowConnect {
 		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, "Connect is disabled")
 		return false
@@ -248,15 +256,21 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 }
 
 func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error, r *http.Request) {
-	
+
 	if err == nil {
 		panic("expected non nil error")
 	}
-	
+
 	var statusCode int
 	var message string
-	
-	switch(err) {
+
+	custErr, ok := err.(ProxyAgentError)
+
+	if ok {
+		message = custErr.Error()
+		statusCode = custErr.ErrorCode()
+	} else {
+		switch err {
 		case ErrBadRequest:
 			statusCode = http.StatusBadRequest
 			message = "Client sent a bad request"
@@ -265,13 +279,12 @@ func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error, r *http.
 		default:
 			statusCode = http.StatusInternalServerError
 			message = "Unknown error occurred: " + err.Error()
+		}
 	}
-	
+
 	http.Error(w, http.StatusText(statusCode), statusCode)
-	
+
 	if message != "" {
 		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, message)
 	}
 }
-
-
