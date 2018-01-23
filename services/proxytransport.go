@@ -95,7 +95,7 @@ func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response
 		rresp, err := sTrans.Transport.RoundTrip(rsr)
 
 		if rsr.Context().Err() == context.Canceled {
-			return nil, nil
+			return nil, rsr.Context().Err()
 		}
 
 		if err == nil {
@@ -103,20 +103,13 @@ func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response
 		}
 
 		now := time.Now()
-
-		failedToConnectError := &proxyRequestError {
-				httpErrorCode: http.StatusBadGateway,
-				externalErrorString: http.StatusText(http.StatusBadGateway),
-				internalErrorString: "timeout failure while attempting to connect to upstream server",
-				sourceError: err,
-			}
 		
 		if sTrans.MaxTimeTryingToConnect != 0 && now.Sub(start) >= sTrans.MaxTimeTryingToConnect {
-			return nil, failedToConnectError
+			return nil, err
 		}
 
 		if sTrans.MaxNumberOfConnectAttempts != 0 && counter >= sTrans.MaxNumberOfConnectAttempts {
-			return nil, failedToConnectError
+			return nil, err
 		}
 
 		netErr, ok := err.(net.Error)
@@ -129,17 +122,13 @@ func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response
 		}
 
 		if netErr.Timeout() {
-			return nil, failedToConnectError
+			return nil, err
 		}
 
 		//Cancel request if client has disconnected
 		select {
 		case <-ctx.Done():
-			return nil, &proxyRequestError {
-				err: nil,
-				skipLogging: true,
-				abortRequest: true,
-			}
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -148,14 +137,6 @@ func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response
 
 }
 
-/*func monitorRequest(cancel func(), quit chan interface{}, clientContext context.Context) {
-	select {
-	case <-clientContext.Done():
-		cancel()
-	case <-quit:
-		//Do Nothing
-	}
-}*/
 func (proxy *ProxyServerTransport) Dial(remoteAddress string, tlsConn bool, ctx context.Context) (conn net.Conn, err error) {
 
 	var counter int = 0
@@ -197,11 +178,7 @@ func (proxy *ProxyServerTransport) Dial(remoteAddress string, tlsConn bool, ctx 
 		//Cancel request if client has disconnected
 		select {
 		case <-ctx.Done():
-			return nil, &proxyRequestError {
-				err: nil,
-				skipLogging: true,
-				abortRequest: true,
-			}
+			return nil, ctx.Err()
 		default:
 		}
 		

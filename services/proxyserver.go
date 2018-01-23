@@ -24,9 +24,12 @@ import (
 	"net"
 	"sync"
 	"time"
+	"errors"
 )
 
 const proxyErrorPrefix = "Proxy Core Server: "
+var ErrRequestHijacked error = errors.New("Proxy Server: The InterceptResponse function has handled the request")
+
 
 type ProxyServer struct {
 
@@ -48,6 +51,8 @@ type ProxyServer struct {
 
 	//Transport used to dial TCP and http requests
 	Transport ProxyTransport
+	
+	InterceptResponse func(http.ResponseWriter, *http.Request, *http.Response) error
 	
 	//Root Context used to shutdown the server
 	ctx context.Context
@@ -78,13 +83,6 @@ func (proxy *ProxyServer) Close() error {
 	return nil
 }
 
-func (proxy *ProxyServer) emitHttpError(w http.ResponseWriter, code int, internalMessage string, externalMessage string) {
-	var prefix string
-	prefix = proxyErrorPrefix
-	proxy.MsgLogger.Printf("%s HTTP request error \"%s.\" External message sent was \"%s.\" with error code %d.", prefix, internalMessage, externalMessage, code)
-	http.Error(w, externalMessage, code)
-}
-
 //Standard function that handles a proxy request.
 func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	
@@ -93,7 +91,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	if !proxy.allowRequest(r, w) {
-		return
+		panic(http.ErrAbortHandler)
 	}
 	
 	//Link this to the core proxy context so if the server
@@ -110,16 +108,25 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err == ErrUseConnect {
 			conn, err := proxy.ProxyAgent.Connect(r)
 			if err != nil {
-				proxy.handleError(w, err)
+				proxy.handleError(w, err, r)
 			} else{
 				proxy.proxyTcpConnection(w, conn, !IsWebSocketRequest(r), ctx)
 			}
 		} else {
-			proxy.handleError(w, err)	
+			proxy.handleError(w, err, r)	
 		}
 	} else {
 		defer resp.Body.Close()
-		CopyBackProxyResponse(w, resp)
+		if proxy.InterceptResponse != nil {
+			err = proxy.InterceptResponse(w, r, resp)
+			if err != ErrRequestHijacked {
+				proxy.handleError(w, err, r)
+			}
+		}
+		
+		if err == nil {
+			CopyBackProxyResponse(w, resp)
+		} 
 	}
 	
 	return
@@ -142,7 +149,7 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		proxy.MsgLogger.Println("Hijacking not supported by your implementation")
+		proxy.MsgLogger.Println("Proxy Server: Hijacking not supported by your implementation")
 		panic(http.ErrAbortHandler)
 	}
 
@@ -150,7 +157,7 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	toClientConn, _, err := hj.Hijack()
 
 	if err != nil {
-		panic("Proxy Server: Could not hijack client request: " + err.Error())
+		proxy.MsgLogger.Println("Proxy Server: Could not hijack client request: " + err.Error())
 		panic(http.ErrAbortHandler)
 	}
 
@@ -225,55 +232,44 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 	//     		  access control operations?
 	
 	if r.Method == http.MethodConnect && !proxy.AllowConnect {
-		proxy.emitHttpError(w, http.StatusForbidden, "Request for CONNECT from "+r.RemoteAddr+" to path \""+r.URL.String()+"\" was denied because AllowConnect is set to false.", http.StatusText(http.StatusForbidden))
+		proxy.MsgLogger.Printf("Proxy Server: Error on path \"%s\" sent by \"%s\" : %s", r.URL.String(), r.RemoteAddr, "Connect is disabled")
 		return false
 	}
 
 	isWebSocket := IsWebSocketRequest(r)
 
 	if isWebSocket && !proxy.AllowWebsocket {
-		proxy.emitHttpError(w, http.StatusForbidden, "HTTP websocket upgrade request from "+r.RemoteAddr+" to path \""+r.URL.String()+"\" was denied because AllowWebsocket is set to false.", http.StatusText(http.StatusForbidden))
+		proxy.MsgLogger.Printf("Proxy Server: Error on path \"%s\" sent by \"%s\" : %s", r.URL.String(), r.RemoteAddr, "Websocket is disabled")
 		return false
 	}
 
 	return true
 }
 
-func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error) {
+func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error, r *http.Request) {
 	
 	if err == nil {
 		panic("expected non nil error")
 	}
 	
-	httpError, ok := err.(ProxyAgentError)
+	var statusCode int
+	var message string
 	
-	if !ok {
-		proxy.emitHttpError(w, http.StatusInternalServerError, "Unknown internal server error. Error received was \"" + err.Error() + "\"", http.StatusText(http.StatusInternalServerError))
-	} else {
-		
-		abortRequest := httpError.AbortRequest()
-		
-		if !httpError.SkipLogging() {
-			internalErrorMessage := httpError.InternalErrorString()
-			sourceError := httpError.SourceError()
-			abortRequestMessage := "was not aborted"
-			
-			if abortRequest {
-				abortRequestMessage = "was aborted"
-			}
-			
-			if sourceError == nil {
-				proxy.MsgLogger.Printf("%s Error occurred while processing the request. Error message was \"%s\" and the request %s.", proxyErrorPrefix, internalErrorMessage, abortRequestMessage)
-			} else {
-				proxy.MsgLogger.Printf("%s Error occurred while processing the request. Error message was \"%s\" with an internal source error with message \"%s.\" The request %s.", proxyErrorPrefix, internalErrorMessage, sourceError.Error(), abortRequestMessage)
-			}
-		}
-		
-		if abortRequest {
-			panic(http.ErrAbortHandler)
-		}
-				
-		http.Error(w, httpError.ExternalErrorString(), httpError.ErrorCode())
+	switch(err) {
+		case ErrBadRequest:
+			statusCode = http.StatusBadRequest
+			message = "Client sent a bad request"
+		case ErrBadGateway:
+			statusCode = http.StatusBadGateway
+		default:
+			statusCode = http.StatusInternalServerError
+			message = "Unknown error occurred: " + err.Error()
+	}
+	
+	http.Error(w, http.StatusText(statusCode), statusCode)
+	
+	if message != "" {
+		proxy.MsgLogger.Printf("Proxy Server: Error on path \"%s\" sent by \"%s\" : %s", r.URL.String(), r.RemoteAddr, message)
 	}
 }
 
