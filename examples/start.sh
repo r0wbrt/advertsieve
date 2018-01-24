@@ -1,7 +1,8 @@
 #!/bin/bash
 
-nohup ./daemon.sh $1 &
-disown $!
+(./daemon.sh $1 $2 $3) &> /dev/null &
+
+disown -h $!
 
 
 
