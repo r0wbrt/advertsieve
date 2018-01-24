@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PIDFile="./advertsieve.pid"
+PIDFile="$1"
 
 if [ -e $PIDFile ] 
 then
@@ -8,5 +8,14 @@ then
 	rm $PIDFile
 fi
 
-echo $$ > $PIDFile
-exec advertsieve $1
+if [ -n "$3"	 ]; then
+	$1 $2 &>> "$3" &
+else
+	$1 $2 &>> "/dev/null" &
+fi
+
+echo $! > $PIDFile
+
+wait
+
+rm $PIDFile &> "/dev/null"
