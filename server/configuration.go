@@ -67,6 +67,8 @@ type AdvertSieveConfig struct {
 	ConnectAccessControl []ConnectAccessControl
 	
 	EnableDevelopmentMode bool
+	
+	EnableTurboTlsMode bool
 }
 
 func ReadInHostAclFile(path string, hostAcl *contentpolicy.HostAccessControl) error {
@@ -204,6 +206,9 @@ func ReadConfigurationInFromFile(path string) (*AdvertSieveConfig, error) {
 			vals := configResults.ParsedResult[i]
 
 			switch k {
+				
+			case config.EnableTurboTlsMode.Name:
+				configuration.EnableTurboTlsMode = vals[0].(bool)
 				
 			case config.EnableDevelopmentMode.Name:
 				configuration.EnableDevelopmentMode = vals[0].(bool)

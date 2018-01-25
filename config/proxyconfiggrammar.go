@@ -115,6 +115,12 @@ var EnableDevelopmentMode ConfigStatement = ConfigStatement{
 	Syntax:        []Lexeme{OnOffLexeme},
 }
 
+var EnableTurboTlsMode ConfigStatement = ConfigStatement {
+	Name: "turbotls",
+	AllowMultiple: false,
+	Syntax: []Lexeme{OnOffLexeme},
+}
+
 func IPLexeme(input []rune) (ip interface{}, unconsumedInput []rune, err error) {
 	ip, unconsumedInput, err = ConsumeIP(input)
 
@@ -255,6 +261,7 @@ func GetProxyGrammar() (grammar *Grammar) {
 		ServerHostnameStatement,
 		ConnectACLStatement,
 		EnableDevelopmentMode,
+		EnableTurboTlsMode,
 	}
 
 	for i := 0; i < len(proxyTokens); i++ {
