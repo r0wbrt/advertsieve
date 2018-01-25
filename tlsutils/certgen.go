@@ -32,7 +32,7 @@ import (
 type TLSCertGen struct {
 
 	//Cert used to sign other ceritifcates. If left blank, all certs are self
-	//signed. This cert should be installed in the clients accessing the proxy
+	//signed. This root CA of the cert should be installed in the clients accessing the proxy
 	//to avoid cert error messages.
 	RootAuthorityCert *x509.Certificate
 
@@ -42,6 +42,15 @@ type TLSCertGen struct {
 	//Prefix to stick before the organization field of the generated certs which
 	//automatically gets set to the requested host
 	OrganizationPrefix string
+	
+	//Enables TurboCertGen mode. In TurboCertGen mode, all generated certificates share
+	//the same public and private key. The only computation involved in this mode
+	//is the dynamic creation of the certificate and its signing by the root CA.
+	TurboCertGen bool
+	
+	//The shared key in TurboCertGen mode that all generated certificates share.
+	SharedRsaKey *rsa.PrivateKey
+	
 }
 
 func (certGen *TLSCertGen) GetCertificate(hello *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
@@ -70,7 +79,13 @@ func (certGen *TLSCertGen) GetCertificate(hello *tls.ClientHelloInfo) (cert *tls
 
 func (certGen *TLSCertGen) GenerateCertificate(host string) (certPem []byte, keyPem []byte, err error) {
 
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	var priv *rsa.PrivateKey
+	
+	if certGen.TurboCertGen {
+		priv = certGen.SharedRsaKey
+	} else {
+		priv, err = rsa.GenerateKey(rand.Reader, 2048)	
+	}
 
 	if err != nil {
 		return
