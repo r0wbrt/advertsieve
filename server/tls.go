@@ -19,9 +19,25 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"github.com/r0wbrt/advertsieve/tlsutils"
+	"crypto/rand"
+	"crypto/rsa"
 )
 
-func SetupTlsCertGen(certPath string, keyPath string) (*tlsutils.InMemoryCertDatabase, error) {
+func SetupTlsCertGenDatabase(certPath string, keyPath string, enableTurboTls bool) (*tlsutils.InMemoryCertDatabase, error) {
+	
+	tlsCertGen, err := SetupTlsCertGen(certPath, keyPath, enableTurboTls)
+	
+	if err != nil {
+		return nil, err
+	}
+
+	tlsCertDatabase := tlsutils.NewInMemoryCertDatabase(tlsCertGen.GenerateCertificate)
+
+	return tlsCertDatabase, nil
+}
+
+
+func SetupTlsCertGen(certPath string, keyPath string, turboTlsMode bool) (*tlsutils.TLSCertGen, error) {
 
 	tlsCertGen := new(tlsutils.TLSCertGen)
 
@@ -38,8 +54,16 @@ func SetupTlsCertGen(certPath string, keyPath string) (*tlsutils.InMemoryCertDat
 	tlsCertGen.RootAuthorityPrivateKey = cert.PrivateKey
 	tlsCertGen.RootAuthorityCert = caCert
 	tlsCertGen.OrganizationPrefix = ""
+	tlsCertGen.TurboCertGen = turboTlsMode
+	
+	if turboTlsMode {
+		key, err := rsa.GenerateKey(rand.Reader, 2048)	
+		if err != nil {
+			return nil, err
+		}
+		
+		tlsCertGen.SharedRsaKey = key
+	}
 
-	tlsCertDatabase := tlsutils.NewInMemoryCertDatabase(tlsCertGen.GenerateCertificate)
-
-	return tlsCertDatabase, nil
+	return tlsCertGen, nil
 }
