@@ -15,7 +15,7 @@
 
 package main
 
-const CONST_VERSION = "18.01.01"
+const CONST_VERSION = "18.01.24"
 const CONST_CONFIG_FILE_PATH = "/usr/local/etc/advertsieve/advertsieve.config"
 const CONST_BRAND_NAME = "advertsieve"
 const CONST_BUILD_TYPE = "unstable"
