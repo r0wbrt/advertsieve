@@ -21,10 +21,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 )
 
 type ContentPolicyServerHook struct {
+	
 	//When set to true, requests with no refer are still filtered. Set this to true
 	//if you want to use this server for content filtering. Eg: parental controls.
 	FilterOnReferFreeRequests bool
@@ -33,69 +33,77 @@ type ContentPolicyServerHook struct {
 
 	//Must be compiled
 	PathAccessControl *PathAccessControl
-
-	//RW mutex to control access to this structure
-	Mutex sync.RWMutex
-	
-	Next func(context services.ProxyRequest) error
 }
 
-func (instance *ContentPolicyServerHook) Hook(context services.ProxyRequest) error {
+func (instance *ContentPolicyServerHook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	
+	requestBlocked, err := instance.IsRequestBlocked(r, nil)
+	
+	if err != nil {
+		panic(err)
+	}
+	
+	if requestBlocked {
+		PassiveAggressiveBlockRequest(w)
+	}
+}
 
-	instance.Mutex.RLock()
-	defer instance.Mutex.RUnlock()
+func (instance *ContentPolicyServerHook) InterceptResponse(w http.ResponseWriter, resp *http.Response) error {
+	
+	requestBlocked, err := instance.IsRequestBlocked(resp.Request, resp)
+	
+	if err != nil {
+		panic(err)
+	}
+	
+	if requestBlocked {
+		PassiveAggressiveBlockRequest(w)
+		return services.ErrRequestHijacked
+	}
+	
+	return nil	
+}
 
-	var rsr *http.Request = context.UpstreamRequest()
-	var w http.ResponseWriter = context.DownstreamResponse()
+func (instance *ContentPolicyServerHook) IsRequestBlocked(clientRequest *http.Request, remoteResponse *http.Response) (bool, error) {
 
+	//Check if we can filter the response if no refer header is present
+	filterHost, ok := GetRequestFilterHost(clientRequest, instance.FilterOnReferFreeRequests)
+	if !ok {
+		return false, nil
+	}
+	
 	if instance.HostAccessControl != nil {
-		var requestHost string = GetRequestHost(rsr)
+		var requestHost string = GetRequestHost(clientRequest)
+		
+		//Block the host if AllowHost returns false
 		if !instance.HostAccessControl.AllowHost(requestHost) {
-			PassiveAggressiveBlockRequest(w)
-			return services.ProxyHTTPTransactionHandled
+			return true, nil
 		}
 	}
 
 	//Don't run path access control on connect. It makes no sense.
-	if rsr.Method == http.MethodConnect {
-		return instance.runNextHook(context)
+	if clientRequest.Method == http.MethodConnect {
+		return false, nil
 	}
 
 	if instance.PathAccessControl != nil {
-		var filterHost string
-		var ok bool
 
-		filterHost, ok = GetRequestFilterHost(rsr, instance.FilterOnReferFreeRequests)
-		if !ok {
-			return instance.runNextHook(context)
-		}
-
-		var requestTypeBitMap int64 = SniffRequestType(rsr, context.UpstreamResponse())
-		var isThirdParty bool = IsThirdParty(rsr)
-		var path string = GetRequestPath(rsr)
+		var requestTypeBitMap int64 = SniffRequestType(clientRequest, remoteResponse)
+		var isThirdParty bool = IsThirdParty(clientRequest)
+		var path string = GetRequestPath(clientRequest)
 		var block bool
 
 		block, err := instance.PathAccessControl.EvaluateRequest(filterHost, path, isThirdParty, requestTypeBitMap)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if block {
-			PassiveAggressiveBlockRequest(w)
-			return services.ProxyHTTPTransactionHandled
+			return true, nil
 		}
 	}
 
-	return instance.runNextHook(context)
-}
-
-func (instance *ContentPolicyServerHook) runNextHook(context services.ProxyRequest) error {
-	if instance.Next != nil {
-		return instance.Next(context)
-	}
-	
-	return nil
-	
+	return false, nil
 }
 
 func SniffRequestType(r *http.Request, resp *http.Response) int64 {
