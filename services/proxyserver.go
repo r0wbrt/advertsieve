@@ -64,7 +64,7 @@ type ProxyServer struct {
 	//Function that can modify the response before before it is sent to the client.
 	//This function can also handle the entire response and the function indicates this
 	//by returning ErrRequestHijacked.
-	InterceptResponse func(http.ResponseWriter, *http.Request, *http.Response) error
+	InterceptResponse func(http.ResponseWriter, *http.Response) error
 
 	//Root Context used to shutdown the server
 	ctx context.Context
@@ -129,7 +129,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		defer resp.Body.Close()
 		if proxy.InterceptResponse != nil {
-			err = proxy.InterceptResponse(w, r, resp)
+			err = proxy.InterceptResponse(w, resp)
 			if err != ErrRequestHijacked {
 				proxy.handleError(w, err, r)
 			}
