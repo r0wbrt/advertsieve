@@ -70,6 +70,12 @@ func (instance *ContentPolicyServerHook) Hook(context *services.ProxyChainContex
 		}
 
 		var requestTypeBitMap int64 = SniffRequestType(rsr, context.UpstreamResponse)
+
+		//Don't block HTML and plain text pages to match Ad Block Plus behavior
+		if requestTypeBitMap&ContentTypeDoNotBlock == ContentTypeDoNotBlock {
+			return
+		}
+
 		var isThirdParty bool = IsThirdParty(rsr)
 		var path string = GetRequestPath(rsr)
 		var block bool
@@ -184,6 +190,8 @@ func mimeStringToType(mimeType string) int64 {
 		return ContentTypeScript
 	case "text/css":
 		return ContentTypeStylesheet
+	case "text/html", "text/plain":
+		return ContentTypeDoNotBlock
 	default:
 		return ContentTypeOther
 	}
