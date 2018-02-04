@@ -16,12 +16,33 @@
 package server
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"github.com/r0wbrt/advertsieve/tlsutils"
 )
 
-func SetupTlsCertGen(certPath string, keyPath string) (*tlsutils.InMemoryCertDatabase, error) {
+//Creates a new in memory certificate database.
+func SetupTlsCertGenDatabase(certPath string, keyPath string, enableTurboTls bool) (*tlsutils.InMemoryCertDatabase, error) {
+
+	tlsCertGen, err := SetupTlsCertGen(certPath, keyPath, enableTurboTls)
+
+	if err != nil {
+		return nil, err
+	}
+
+	tlsCertDatabase := tlsutils.NewInMemoryCertDatabase(tlsCertGen.GenerateCertificate)
+
+	return tlsCertDatabase, nil
+}
+
+//Sets up a certificate generator source.
+//certPath and keyPath are the paths to the certificate which will be used
+//to sign all generated certificates. turboTlsMode forces all generated certificates
+//to use the same public and private key. The net effect is a significant
+//reduction in CPU usage.
+func SetupTlsCertGen(certPath string, keyPath string, turboTlsMode bool) (*tlsutils.TLSCertGen, error) {
 
 	tlsCertGen := new(tlsutils.TLSCertGen)
 
@@ -38,8 +59,16 @@ func SetupTlsCertGen(certPath string, keyPath string) (*tlsutils.InMemoryCertDat
 	tlsCertGen.RootAuthorityPrivateKey = cert.PrivateKey
 	tlsCertGen.RootAuthorityCert = caCert
 	tlsCertGen.OrganizationPrefix = ""
+	tlsCertGen.TurboCertGen = turboTlsMode
 
-	tlsCertDatabase := tlsutils.NewInMemoryCertDatabase(tlsCertGen.GenerateCertificate)
+	if turboTlsMode {
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			return nil, err
+		}
 
-	return tlsCertDatabase, nil
+		tlsCertGen.SharedRsaKey = key
+	}
+
+	return tlsCertGen, nil
 }

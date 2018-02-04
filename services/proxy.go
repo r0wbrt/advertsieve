@@ -38,15 +38,15 @@ type ProxyHookType int
 const (
 	//A handler with this flag will run before the upstream request is sent to
 	//the remote server. Handlers can modify the request or hijack the request
-	//and return their own custom reply if they want. Handlers that wish to 
+	//and return their own custom reply if they want. Handlers that wish to
 	//both modify the request and modify its reply should install a before
 	//and after handler and hijack the request in the before issue downstream
 	//request handler.
 	BeforeIssueUpstreamRequest ProxyHookType = iota
-	
+
 	//A handler with this flag will run after the upstream request headers have
 	//been sent, and the response headers have been received. The body has not
-	//been received yet so handlers can hijack the the request and modify and 
+	//been received yet so handlers can hijack the the request and modify and
 	//return the body has they see fit.
 	BeforeIssueDownstreamResponse
 )
@@ -71,9 +71,9 @@ type ProxyChainContext struct {
 
 	//State of the request
 	RequestState ProxyHookType
-	
+
 	//Context object
-	Context context.Context 
+	Context context.Context
 
 	//Proxy instance
 	Proxy *ProxyServer
@@ -85,10 +85,10 @@ type ProxyChainContext struct {
 //Signature of a proxy hook function
 type ProxyHook func(context *ProxyChainContext) (stopProcessingChain, connHijacked bool, err error)
 
-//Proxy server is an implementation of a http proxy server using go's http 
-//library. The proxy server exposes a pre and post request hook to allow 
+//Proxy server is an implementation of a http proxy server using go's http
+//library. The proxy server exposes a pre and post request hook to allow
 //modification of the server's behavior. The primary use of this server
-//is to support content filtering in the advertsieve project. 
+//is to support content filtering in the advertsieve project.
 //
 //By default, this server disables http/2.0, however it can be turned back on
 //by modifying the TLS config.
@@ -96,7 +96,7 @@ type ProxyServer struct {
 
 	//When set to true, the proxy permit tcp tunneling through this web server.
 	//If set to false, CONNECT method will be rejected. This is set to false
-	//by default because of its potential for abuse. 
+	//by default because of its potential for abuse.
 	AllowConnect bool
 
 	//When set to true, websocket upgrade requests will be passed through this proxy.
@@ -140,18 +140,18 @@ type ProxyServer struct {
 	//Default configuration:
 	//	proxy.Transport = &http.Transport{
 	//	TLSHandshakeTimeout:   time.Duration(10) * time.Second,
-    //	MaxIdleConns:          128,
-    //	IdleConnTimeout:       time.Duration(2) * time.Minute,
+	//	MaxIdleConns:          128,
+	//	IdleConnTimeout:       time.Duration(2) * time.Minute,
 	//	ExpectContinueTimeout: time.Duration(1) * time.Second,
 	//	ResponseHeaderTimeout: time.Duration(30) * time.Second,
 	//	TLSClientConfig:       proxy.TlsConfig,
 	//	TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper), // Disable HTTP2
 	//}
 	Transport http.RoundTripper
-	
+
 	//Tls config used by proxy to make upstream TLS connections. Note,
 	//if the instance of this field is replaced with a new instance of tls.Config,
-	//the tls config, if one exists, on Transport will not be updated. 
+	//the tls config, if one exists, on Transport will not be updated.
 	TlsConfig *tls.Config
 }
 
@@ -165,7 +165,7 @@ func NewProxyServer() (proxy *ProxyServer) {
 	proxy.RetryBackoffCoefficient = time.Duration(500) * time.Millisecond
 	proxy.AllowWebsocket = true
 	proxy.TlsConfig = SecureTLSConfig()
-	
+
 	proxy.MsgLogger = log.New(os.Stderr, "Proxy ", log.Lmicroseconds|log.Ldate)
 
 	proxy.Transport = &http.Transport{
@@ -209,16 +209,15 @@ func (proxy *ProxyServer) coreHttpError(w http.ResponseWriter, code int, interna
 	proxy.emitHttpError(w, code, internalMessage, externalMessage, true)
 }
 
-
 func (proxy *ProxyServer) emitHttpError(w http.ResponseWriter, code int, internalMessage string, externalMessage string, coreError bool) {
 	var prefix string
-	
+
 	if coreError {
 		prefix = proxyErrorPrefix
 	} else {
 		prefix = proxyComponentError
 	}
-	
+
 	proxy.MsgLogger.Printf("%s HTTP request error \"%s.\" External message sent was \"%s.\" with error code %d.", prefix, internalMessage, externalMessage, code)
 	http.Error(w, externalMessage, code)
 }
@@ -271,7 +270,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	rsr = rsr.WithContext(ctx)
-	
+
 	//Copy over headers for sending to the remote server
 	setUpRemoteServerRequest(r, rsr)
 
@@ -322,7 +321,7 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 
 	//(*r0wbrt) - Should we expose a new proxy chain that could run here to perform
 	//     		  access control operations?
-	
+
 	if r.Method == http.MethodConnect && !proxy.AllowConnect {
 		proxy.coreHttpError(w, http.StatusForbidden, "Request for CONNECT from "+r.RemoteAddr+" to path \""+r.URL.String()+"\" was denied because AllowConnect is set to false.", http.StatusText(http.StatusForbidden))
 		return false
@@ -410,9 +409,9 @@ func (proxy *ProxyServer) returnHTTPResponse(rsr *http.Request, w http.ResponseW
 	io.Copy(w, rresp.Body)
 }
 
-func  (proxy *ProxyServer) removeBodyFromRequest(rsr *http.Request) {
-	
-	//Per RFC specs, if neither of these fields are set, the request should not 
+func (proxy *ProxyServer) removeBodyFromRequest(rsr *http.Request) {
+
+	//Per RFC specs, if neither of these fields are set, the request should not
 	//have a body.
 	if rsr.Header.Get("Content-Length") == "" && rsr.Header.Get("Transfer-Encoding") == "" {
 		rsr.Body = nil
@@ -423,17 +422,16 @@ func  (proxy *ProxyServer) removeBodyFromRequest(rsr *http.Request) {
 	//			  to just nil the body just because these methods are in use so instead
 	//			  Log a warning.
 	//
-	//			  Cloud flare CDN servers will return a malform request error if 
+	//			  Cloud flare CDN servers will return a malform request error if
 	//			  body is defined on a GET request.
 	if ((rsr.Method == http.MethodGet || rsr.Method == http.MethodHead) || rsr.Method == http.MethodDelete) || rsr.Method == http.MethodTrace {
-		
+
 		if rsr.Body != nil {
 
 			proxy.logWarning("Warning, http method " + rsr.Method + " for resource " + rsr.URL.String() + " has a body. This could cause problems with upstream servers.")
 		}
 	}
 }
-
 
 func (proxy *ProxyServer) attemptHttpConnectionToUpstreamServer(rsr *http.Request, reqContext context.Context, cancel func()) (rresp *http.Response, err error) {
 
@@ -563,7 +561,7 @@ func (proxy *ProxyServer) proxyTCPTunnel(remoteAddress string, preambleWriter io
 	toClientConn.SetDeadline(time.Time{})
 	toClientConn.SetReadDeadline(time.Time{})
 	toClientConn.SetWriteDeadline(time.Time{})
-	
+
 	if writeOK {
 		_, err = toClientConn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
 		if err != nil {

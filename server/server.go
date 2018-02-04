@@ -21,7 +21,6 @@ import (
 	"github.com/r0wbrt/advertsieve/config"
 	"github.com/r0wbrt/advertsieve/contentpolicy"
 	"github.com/r0wbrt/advertsieve/services"
-	"github.com/r0wbrt/advertsieve/tlsutils"
 	"log"
 	"net"
 	"net/http"
@@ -34,10 +33,13 @@ type AdvertsieveServer struct {
 
 	Logger *log.Logger
 
-	endServer    chan interface{}
-	chanClosed   bool
-	mutex        sync.Mutex
-	certDatabase *tlsutils.InMemoryCertDatabase
+	endServer  chan interface{}
+	chanClosed bool
+	mutex      sync.Mutex
+
+	//Flag indicating if the server
+	//is prepared to accept TLS connections.
+	tlsSetup bool
 }
 
 type errorMonad struct {
@@ -195,19 +197,40 @@ func (monad *errorMonad) setupHttpServers(mainHandle http.Handler, auxHandler ht
 	tlsConfig := services.SecureTLSConfig()
 
 	config := monad.server.Config
+	monad.server.tlsSetup = false
+
 	if config.CertificatePath != "" && config.PrivateKeyPath != "" {
 
-		database, err := SetupTlsCertGen(monad.server.Config.CertificatePath, monad.server.Config.PrivateKeyPath)
+		//Tests seem to indicate caching the result of the computation to be
+		//server about 2 times faster. Leaving this here for now until this is
+		//determined experimentally via performance testing.
+		/*if config.EnableTurboTlsMode {
+
+			gen, err := SetupTlsCertGen(monad.server.Config.CertificatePath, monad.server.Config.PrivateKeyPath, true)
+			if err != nil {
+				monad.err = err
+				return nil, nil
+			}
+
+			tlsConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
+				return gen.GetCertificate(hello)
+			}
+
+			monad.server.tlsSetup = true
+
+		} else {*/
+		database, err := SetupTlsCertGenDatabase(monad.server.Config.CertificatePath, monad.server.Config.PrivateKeyPath, config.EnableTurboTlsMode)
 		if err != nil {
 			monad.err = err
 			return nil, nil
 		}
 
-		monad.server.certDatabase = database
-
 		tlsConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
-			return monad.server.certDatabase.GetCert(hello.ServerName)
+			return database.GetCert(hello.ServerName)
 		}
+
+		monad.server.tlsSetup = true
+		//	}
 	}
 
 	tlsConfig.NameToCertificate = monad.getVHostCerts()
@@ -270,7 +293,7 @@ func (monad *errorMonad) spawnServers(mainServer, auxServer *http.Server) {
 			tls = true
 		}
 
-		if tls && monad.server.certDatabase == nil {
+		if tls && !monad.server.tlsSetup {
 			monad.err = errors.New("A master and private key must be supplied to use https proxy functions.")
 			return
 		}
@@ -327,7 +350,7 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 	//Setup loop server if cert database is popuplated
 	if !monad.inErrorState() {
 
-		if monad.server.certDatabase != nil {
+		if monad.server.tlsSetup {
 			go monad.httpServerGo(httpMainServer, bridgeHandler, true)
 		}
 

@@ -93,11 +93,6 @@ func (d *VirtualHost) Open(name string) (http.File, error) {
 		return nil, os.ErrNotExist
 	}
 
-	f, err := os.Open(fullName)
-	if err != nil {
-		return nil, mapDirOpenError(err, fullName)
-	}
-
 	if !d.AllowDirectoryIndexing {
 		info, err := os.Stat(fullName)
 		if err != nil {
@@ -105,8 +100,23 @@ func (d *VirtualHost) Open(name string) (http.File, error) {
 		}
 
 		if info.IsDir() {
-			return nil, os.ErrNotExist
+			index := strings.TrimSuffix(fullName, "/") + "/index.html"
+			ff, err := os.Open(index)
+			defer ff.Close()
+			if err == nil {
+				_, err := ff.Stat()
+				if err != nil {
+					return nil, os.ErrNotExist
+				}
+			} else {
+				return nil, os.ErrNotExist
+			}
 		}
+	}
+
+	f, err := os.Open(fullName)
+	if err != nil {
+		return nil, mapDirOpenError(err, fullName)
 	}
 
 	return f, nil

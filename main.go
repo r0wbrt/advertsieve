@@ -47,7 +47,7 @@ func main() {
 	if err != nil {
 		logger.Fatal(err)
 	}
-	
+
 	if config.EnableDevelopmentMode {
 		logger.SetFlags(log.LstdFlags | log.Llongfile)
 	}
