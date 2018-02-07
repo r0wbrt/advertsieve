@@ -95,17 +95,17 @@ func (monad *errorMonad) loadContentPolicy() (postAccessControlHook *contentpoli
 	proxyServer.MsgLogger = monad.server.getLogger()
 
 	var beforeIssueUpstreamRequest func(context services.ProxyRequest) error = nil
-	
+
 	preAccessControlHook, postAccessControlHook := monad.loadContentPolicy()
 
 	//Need to guard against a null ref exception
 	if monad.inErrorState() {
 		return nil
 	}
-	
+
 	preAccessControlHook.Next = beforeIssueUpstreamRequest
-	beforeIssueUpstreamRequest = preAccessControlHook.Hook 
-	
+	beforeIssueUpstreamRequest = preAccessControlHook.Hook
+
 	if !monad.server.Config.DisableHttpLoopDetection {
 
 		if len(monad.server.Config.ServerName) <= 0 {
@@ -116,34 +116,33 @@ func (monad *errorMonad) loadContentPolicy() (postAccessControlHook *contentpoli
 		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName, Next: beforeIssueUpstreamRequest}
 		beforeIssueUpstreamRequest = loopDetecter.Hook
 	}
-	
+
 	if !monad.server.Config.AllowConnectionsToLocalhost {
 		hook := services.PreventConnectionsToLocalhost { Next: beforeIssueUpstreamRequest}
 		beforeIssueUpstreamRequest = hook.Hook
 	}
 
 	proxyServer.GetProxyRequestAgent = services.NewProxyAgentWithHandlers(beforeIssueUpstreamRequest, postAccessControlHook.Hook)
-	
+
 	return proxyServer
 }*/
 
-
 func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
-	
+
 	if monad.inErrorState() {
 		return nil
 	}
-	
-	proxyHandler := services.NewProxyServer();
+
+	proxyHandler := services.NewProxyServer()
 	accessControlHook := monad.loadContentPolicy()
-	
+
 	//Need to guard against a null ref exception
 	if monad.inErrorState() {
 		return nil
 	}
-	
+
 	proxyHandler.InterceptResponse = accessControlHook.InterceptResponse
-	
+
 	return proxyHandler
 }
 
@@ -152,7 +151,7 @@ func (monad *errorMonad) setupServerGuards(handle http.Handler) http.Handler {
 	if monad.inErrorState() {
 		return nil
 	}
-	
+
 	if !monad.server.Config.DisableHttpLoopDetection {
 
 		if len(monad.server.Config.ServerName) <= 0 {
@@ -163,9 +162,9 @@ func (monad *errorMonad) setupServerGuards(handle http.Handler) http.Handler {
 		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName, Next: handle}
 		handle = &loopDetecter
 	}
-	
+
 	if !monad.server.Config.AllowConnectionsToLocalhost {
-		hook := services.PreventConnectionsToLocalhost { Next: handle}
+		hook := services.PreventConnectionsToLocalhost{Next: handle}
 		handle = &hook
 	}
 
@@ -363,7 +362,7 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 	}
 
 	proxyHandler := monad.setupProxyServer()
-	
+
 	proxyWrapper := monad.setupServerGuards(proxyHandler)
 
 	vhostHandler := monad.setupVHost(proxyWrapper)
@@ -381,7 +380,7 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 			go monad.httpServerGo(httpMainServer, bridgeHandler, true)
 		}
 
-		go monad.httpServerGo(httpMainServer, bridgeHandler.GetHttpListener(), false)
+		go monad.httpServerGo(httpMainServer, bridgeHandler.GetHTTPListener(), false)
 
 		select {
 		case <-server.endServer:
