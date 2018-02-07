@@ -20,16 +20,30 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
-	"reflect"
 )
 
+//Configuration structure that detects http proxy loops by
+//checking and adding via headers to incoming http requests.
 type DetectHTTPLoop struct {
+
+	//Host name of the server. Should be something
+	//unique.
 	Hostname string
-	Next     http.Handler
+
+	//The next handler to run after this one assuming the
+	//incoming request does not have a via header with the Hostname
+	//contained in it. THe next handler will recieve request with
+	//the via header added to it.
+	Next http.Handler
 }
 
+//Http handler for the loop detection functionality. If the validation passes,
+//this function will call Next with the a Via header containing the server's hostname.
+//Any subsequent handlers should make sure to include the Via header in any HTTP requests
+//issued.
 func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	viaHeader := r.Header.Get("Via")
@@ -50,10 +64,17 @@ func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+//Handler that will do some basic sanity checks to prevent a remote client
+//from attempting to access the server with a host field that redirects
+//to localhost.
+//
+//Checks if host is localhost or a loopback address. Does not do a DNS
+//lookup on the address because of https://github.com/r0wbrt/advertsieve/issues/21.
 type PreventConnectionsToLocalhost struct {
-	Next http.Handler
+	Next http.Handler //Nexy handler to run if this check passes.
 }
 
+//HTTP handler used to reject http requests that circle back to the host.
 func (config *PreventConnectionsToLocalhost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var host string = r.Host
 	var ip net.IP = net.ParseIP(host)
@@ -85,6 +106,8 @@ func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration,
 	time.Sleep(setPause + waitDuration)
 }
 
+//Removes the body from requests that should not have one. If this is not
+//done, certain upstream CDN will throw an error.
 func RemoveBodyFromRequest(rsr *http.Request) {
 
 	//Per RFC specs, if neither of these fields are set, the request should not
@@ -148,6 +171,8 @@ func RemoveHopByHopHeaders(header *http.Header) {
 	}
 }
 
+//Returns a TLS config with some settings modified to make it
+//more secure.
 func SecureTLSConfig() (tlsConfig *tls.Config) {
 
 	tlsConfig = new(tls.Config)
