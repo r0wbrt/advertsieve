@@ -39,9 +39,9 @@ func TestAddBlockedHost(t *testing.T) {
 		t.Errorf("Blocked host www.example.com was not blocked. It should have been.")
 	}
 
-	var result int = hostAC.checkIfHostInFilter("www.example.com")
+	var result int = hostAC.checkHostStatus("www.example.com")
 	if result != -1 {
-		t.Errorf("www.example.com is blocked but checkIfHostInFilter returned %d. It should have returned -1", result)
+		t.Errorf("www.example.com is blocked but checkHostStatus returned %d. It should have returned -1", result)
 	}
 }
 
@@ -53,9 +53,9 @@ func TestAddExceptionHost(t *testing.T) {
 		t.Errorf("www.example.com should have been allowed since it was added as an exception host")
 	}
 
-	var result int = hostAC.checkIfHostInFilter("www.example.com")
+	var result int = hostAC.checkHostStatus("www.example.com")
 	if result != 1 {
-		t.Errorf("www.example.com is an exception but checkIfHostInFilter returned %d. It should have returned 1", result)
+		t.Errorf("www.example.com is an exception but checkHostStatus returned %d. It should have returned 1", result)
 	}
 }
 
@@ -64,7 +64,7 @@ func TestExceptionRespectedForBlockRule(t *testing.T) {
 	hostAC.AddBlockedHost("www.google.com")
 	hostAC.AddException("www.google.com")
 
-	if !hostAC.AllowHost("www.google.com") || hostAC.checkIfHostInFilter("www.google.com") != 1 {
+	if !hostAC.AllowHost("www.google.com") || hostAC.checkHostStatus("www.google.com") != 1 {
 		t.Errorf("www.google.com is both a block rule and an exception rule. Exception rules take precendence so this domain should be allowed through")
 	}
 }
@@ -73,7 +73,7 @@ func TestSubDomainsAreBlocked(t *testing.T) {
 	var hostAC *HostAccessControl = NewHostAccessControl()
 	hostAC.AddBlockedHost("adsite.ty")
 
-	if hostAC.AllowHost("zzz.adsite.ty") || hostAC.checkIfHostInFilter("zzz.adsite.ty") != -1 {
+	if hostAC.AllowHost("zzz.adsite.ty") || hostAC.checkHostStatus("zzz.adsite.ty") != -1 {
 		t.Errorf("zzz.adsite.ty should be blocked since it is a sub domain of blocking rule adsite.ty")
 	}
 }
@@ -82,7 +82,7 @@ func TestParentDomainsArenotBlocked(t *testing.T) {
 	var hostAC *HostAccessControl = NewHostAccessControl()
 	hostAC.AddBlockedHost("www.kalm.ghz")
 
-	if !hostAC.AllowHost("kakm.ghz") || hostAC.checkIfHostInFilter("kakm.ghz") != 0 {
+	if !hostAC.AllowHost("kakm.ghz") || hostAC.checkHostStatus("kakm.ghz") != 0 {
 		t.Errorf("kakm.gz should be allowed. The only blocking rule is www.kalm.ghz and this is a subdomain of kakm.gz")
 	}
 }
@@ -91,7 +91,7 @@ func TestUnblockedHostsArePermitted(t *testing.T) {
 	var hostAC *HostAccessControl = NewHostAccessControl()
 	hostAC.AddBlockedHost("www.kalm.ghz")
 
-	if !hostAC.AllowHost("www.google.com") || hostAC.checkIfHostInFilter("www.google.com") != 0 {
+	if !hostAC.AllowHost("www.google.com") || hostAC.checkHostStatus("www.google.com") != 0 {
 		t.Errorf("www.google.com is not listed as a blocked rule so it should have passed")
 	}
 }
@@ -101,7 +101,7 @@ func TestExceptionSubDomainsArePermitted(t *testing.T) {
 	hostAC.AddBlockedHost("kalm.ghz")
 	hostAC.AddException("wwy.kalm.ghz")
 
-	if !hostAC.AllowHost("wwy.kalm.ghz") || hostAC.checkIfHostInFilter("wwy.kalm.ghz") != 1 {
+	if !hostAC.AllowHost("wwy.kalm.ghz") || hostAC.checkHostStatus("wwy.kalm.ghz") != 1 {
 		t.Errorf("wwy.kakm.gz should be allowed. There is an exception for this domain for blocking rule kalm.ghz")
 	}
 }
@@ -111,7 +111,7 @@ func TestExceptionSubDomainsAreNotPermitted(t *testing.T) {
 	hostAC.AddBlockedHost("kalm.ghz")
 	hostAC.AddException("wwy.kalm.ghz")
 
-	if hostAC.AllowHost("zzz.wwy.kalm.ghz") || hostAC.checkIfHostInFilter("zzz.wwy.kalm.ghz") != -1 {
+	if hostAC.AllowHost("zzz.wwy.kalm.ghz") || hostAC.checkHostStatus("zzz.wwy.kalm.ghz") != -1 {
 		t.Errorf("zzz.wwy.kakm.gz should not be allowed. There is an exception for wwy.kalm.ghz and a blocking rule kalm.ghz")
 	}
 }
