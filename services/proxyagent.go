@@ -12,7 +12,7 @@ import (
 
 type proxyAgentError struct {
 	errorString string
-	errorCode int
+	errorCode   int
 	bodyMessage string
 }
 
@@ -30,8 +30,8 @@ func (err *proxyAgentError) BodyMessage() string {
 
 var ErrUseConnect error = errors.New("HttpProxyAgent: Use Connect method to handle the request")
 var ErrUseRoundTrip error = errors.New("HttpProxyAgent: Use RoundTrip method to handle the request")
-var ErrBadRequest ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Bad Request", errorCode: http.StatusBadRequest, bodyMessage: http.StatusText(http.StatusBadRequest) }
-var ErrBadGateway ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Request could not be completed since the upstream server could not be reached", errorCode: http.StatusBadGateway, bodyMessage: http.StatusText(http.StatusBadGateway) }
+var ErrBadRequest ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Bad Request", errorCode: http.StatusBadRequest, bodyMessage: http.StatusText(http.StatusBadRequest)}
+var ErrBadGateway ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Request could not be completed since the upstream server could not be reached", errorCode: http.StatusBadGateway, bodyMessage: http.StatusText(http.StatusBadGateway)}
 
 type HttpProxyAgent interface {
 	Connect(*http.Request) (net.Conn, error)
@@ -114,7 +114,7 @@ func (agent *ProxyServerAgent) RoundTrip(r *http.Request) (*http.Response, error
 }
 
 func (agent *ProxyServerAgent) getTransport() ProxyTransport {
-	if reflect.ValueOf(agent.Transport).IsNil() {
+	if !reflect.ValueOf(agent.Transport).IsValid() {
 		return defaultTransport
 	} else {
 		return agent.Transport

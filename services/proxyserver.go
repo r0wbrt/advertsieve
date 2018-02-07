@@ -27,22 +27,43 @@ import (
 	"time"
 )
 
+//Return this from the InterceptResponse function to indicate the request has been handled
+//and the proxy should do no further processing.
 var ErrRequestHijacked error = errors.New("Proxy Server: The InterceptResponse function has handled the request")
 
+//Format used to log messages.
 const logFormat = "Proxy Server: Error on path \"%s\" sent by \"%s\" : %s"
 
+//Helper function that takes a http response and copies it to a HTTP server
+//response writer.
+func CopyBackProxyResponse(w http.ResponseWriter, r *http.Response) {
+
+	for k, v := range r.Header {
+		values := append([]string(nil), v...)
+		w.Header()[k] = values
+	}
+
+	w.WriteHeader(r.StatusCode)
+	io.Copy(w, r.Body)
+}
+
+//Format a proxy agent can return to control the
+//error response sent to the end user.
 type ProxyAgentError interface {
 
-	//Error to write to the log
+	//Error to write to the log.
 	Error() string
 
 	//HTTP error code to send.
 	ErrorCode() int
-	
+
 	//HTTP response to write to the client.
 	BodyMessage() string
 }
 
+//Implements a proxy server which takes requests from a downstream client,
+//proxies them to an upstream server, and then sends the response back
+//to the downstream client. Supports websocket and connect.
 type ProxyServer struct {
 
 	//When set to true, the proxy permit tcp tunneling through this web server.
@@ -129,7 +150,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer resp.Body.Close()
 		if proxy.InterceptResponse != nil {
 			err = proxy.InterceptResponse(w, resp)
-			if err != ErrRequestHijacked {
+			if err != ErrRequestHijacked && err != nil {
 				proxy.handleError(w, err, r)
 			}
 		}
@@ -142,15 +163,19 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func CopyBackProxyResponse(w http.ResponseWriter, r *http.Response) {
+//Helper function which monitors a request context and server context.
+//If the request context is closed, it closes the response's context via
+//the cancel function.
+func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, cancel func()) {
+	select {
+	case <-requestctx.Done():
+		cancel()
 
-	for k, v := range r.Header {
-		values := append([]string(nil), v...)
-		w.Header()[k] = values
+	case <-handlerctx.Done():
+		//No operation
 	}
 
-	w.WriteHeader(r.StatusCode)
-	io.Copy(w, r.Body)
+	return
 }
 
 func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteServerConn net.Conn, writeOK bool, ctx context.Context) {
@@ -189,8 +214,8 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go proxy.pipeConn(toClientConn, fromRemoteServerConn, &wg)
-	go proxy.pipeConn(fromRemoteServerConn, toClientConn, &wg)
+	go proxy.pipeConn(toClientConn, fromRemoteServerConn, &wg) //Copy client data to server
+	go proxy.pipeConn(fromRemoteServerConn, toClientConn, &wg) //Copy server data to client
 
 	go closeConnectionOnCtxDone(toClientConn, ctx)
 	go closeConnectionOnCtxDone(fromRemoteServerConn, ctx)
@@ -198,6 +223,7 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	wg.Wait()
 }
 
+//Copies a net.Conn read end to a a write end.
 func (handler *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -213,24 +239,13 @@ func (handler *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGr
 	}
 }
 
+//Closes a TCP connection if the context is closed.
 func closeConnectionOnCtxDone(conn net.Conn, ctx context.Context) {
 	select {
 	case <-ctx.Done():
 	}
 
 	conn.Close()
-}
-
-func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, cancel func()) {
-	select {
-	case <-requestctx.Done():
-		cancel()
-
-	case <-handlerctx.Done():
-		//No operation
-	}
-
-	return
 }
 
 //Determines if a request is permitted based on active access control policies
@@ -254,6 +269,7 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 	return true
 }
 
+//Error handling function
 func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error, r *http.Request) {
 
 	if err == nil {

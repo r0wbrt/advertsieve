@@ -59,7 +59,7 @@ func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		r.Header.Set("Via", viaHeader)
 	}
 
-	if !reflect.ValueOf(config.Next).IsNil() {
+	if reflect.ValueOf(config.Next).IsValid() {
 		config.Next.ServeHTTP(w, r)
 	}
 }
@@ -88,7 +88,7 @@ func (config *PreventConnectionsToLocalhost) ServeHTTP(w http.ResponseWriter, r 
 		return
 	}
 
-	if !reflect.ValueOf(config.Next).IsNil() {
+	if reflect.ValueOf(config.Next).IsValid() {
 		config.Next.ServeHTTP(w, r)
 	}
 
