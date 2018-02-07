@@ -10,10 +10,28 @@ import (
 	"reflect"
 )
 
+type proxyAgentError struct {
+	errorString string
+	errorCode int
+	bodyMessage string
+}
+
+func (err *proxyAgentError) Error() string {
+	return err.errorString
+}
+
+func (err *proxyAgentError) ErrorCode() int {
+	return err.errorCode
+}
+
+func (err *proxyAgentError) BodyMessage() string {
+	return err.bodyMessage
+}
+
 var ErrUseConnect error = errors.New("HttpProxyAgent: Use Connect method to handle the request")
 var ErrUseRoundTrip error = errors.New("HttpProxyAgent: Use RoundTrip method to handle the request")
-var ErrBadRequest error = errors.New("HttpProxyAgent: Bad Request")
-var ErrBadGateway error = errors.New("HttpProxyAgent: Request could not be completed since the upstream server could not be reached")
+var ErrBadRequest ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Bad Request", errorCode: http.StatusBadRequest, bodyMessage: http.StatusText(http.StatusBadRequest) }
+var ErrBadGateway ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Request could not be completed since the upstream server could not be reached", errorCode: http.StatusBadGateway, bodyMessage: http.StatusText(http.StatusBadGateway) }
 
 type HttpProxyAgent interface {
 	Connect(*http.Request) (net.Conn, error)

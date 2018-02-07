@@ -22,11 +22,12 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"reflect"
 )
 
 type DetectHTTPLoop struct {
 	Hostname string
-	Next     func(http.ResponseWriter, *http.Request)
+	Next     http.Handler
 }
 
 func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -44,13 +45,13 @@ func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		r.Header.Set("Via", viaHeader)
 	}
 
-	if config.Next != nil {
-		config.Next(w, r)
+	if !reflect.ValueOf(config.Next).IsNil() {
+		config.Next.ServeHTTP(w, r)
 	}
 }
 
 type PreventConnectionsToLocalhost struct {
-	Next func(http.ResponseWriter, *http.Request)
+	Next http.Handler
 }
 
 func (config *PreventConnectionsToLocalhost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -66,8 +67,8 @@ func (config *PreventConnectionsToLocalhost) ServeHTTP(w http.ResponseWriter, r 
 		return
 	}
 
-	if config.Next != nil {
-		config.Next(w, r)
+	if !reflect.ValueOf(config.Next).IsNil() {
+		config.Next.ServeHTTP(w, r)
 	}
 
 	return

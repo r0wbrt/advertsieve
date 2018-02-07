@@ -49,10 +49,10 @@ func (monad *errorMonad) inErrorState() bool {
 	return monad.err != nil
 }
 
-func (monad *errorMonad) loadContentPolicy() (preAccessControlHook, postAccessControlHook *contentpolicy.ContentPolicyServerHook) {
+func (monad *errorMonad) loadContentPolicy() (postAccessControlHook *contentpolicy.ContentPolicyServerHook) {
 
 	if monad.inErrorState() {
-		return nil, nil
+		return nil
 	}
 
 	var hostAcl *contentpolicy.HostAccessControl = contentpolicy.NewHostAccessControl()
@@ -61,7 +61,7 @@ func (monad *errorMonad) loadContentPolicy() (preAccessControlHook, postAccessCo
 		err := ReadInHostAclFile(monad.server.Config.HostsAclFiles[i], hostAcl)
 		if err != nil {
 			monad.err = err
-			return nil, nil
+			return nil
 		}
 	}
 
@@ -71,22 +71,20 @@ func (monad *errorMonad) loadContentPolicy() (preAccessControlHook, postAccessCo
 		err := ReadInPathACLFile(monad.server.Config.PathAclFiles[i], pathAcl)
 		if err != nil {
 			monad.err = err
-			return nil, nil
+			return nil
 		}
 	}
 
 	pathAcl.Compile()
 
-	preAccessControlHook = new(contentpolicy.ContentPolicyServerHook)
-	preAccessControlHook.HostAccessControl = hostAcl
-
 	postAccessControlHook = new(contentpolicy.ContentPolicyServerHook)
+	postAccessControlHook.HostAccessControl = hostAcl
 	postAccessControlHook.PathAccessControl = pathAcl
 
-	return preAccessControlHook, postAccessControlHook
+	return postAccessControlHook
 }
 
-func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
+/*func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 
 	if monad.inErrorState() {
 		return nil
@@ -127,9 +125,54 @@ func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 	proxyServer.GetProxyRequestAgent = services.NewProxyAgentWithHandlers(beforeIssueUpstreamRequest, postAccessControlHook.Hook)
 	
 	return proxyServer
+}*/
+
+
+func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
+	
+	if monad.inErrorState() {
+		return nil
+	}
+	
+	proxyHandler := services.NewProxyServer();
+	accessControlHook := monad.loadContentPolicy()
+	
+	//Need to guard against a null ref exception
+	if monad.inErrorState() {
+		return nil
+	}
+	
+	proxyHandler.InterceptResponse = accessControlHook.InterceptResponse
+	
+	return proxyHandler
 }
 
-func (monad *errorMonad) setupVHost(proxyServer *services.ProxyServer) *services.VirtualHostFileServer {
+func (monad *errorMonad) setupServerGuards(handle http.Handler) http.Handler {
+
+	if monad.inErrorState() {
+		return nil
+	}
+	
+	if !monad.server.Config.DisableHttpLoopDetection {
+
+		if len(monad.server.Config.ServerName) <= 0 {
+			monad.err = errors.New("Must defined advertsieve server name using directive " + config.ServerHostnameStatement.Name + " when loop detection is active.")
+			return nil
+		}
+
+		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName, Next: handle}
+		handle = &loopDetecter
+	}
+	
+	if !monad.server.Config.AllowConnectionsToLocalhost {
+		hook := services.PreventConnectionsToLocalhost { Next: handle}
+		handle = &hook
+	}
+
+	return handle
+}
+
+func (monad *errorMonad) setupVHost(proxyServer http.Handler) *services.VirtualHostFileServer {
 
 	if monad.inErrorState() {
 		return nil
@@ -320,8 +363,10 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 	}
 
 	proxyHandler := monad.setupProxyServer()
+	
+	proxyWrapper := monad.setupServerGuards(proxyHandler)
 
-	vhostHandler := monad.setupVHost(proxyHandler)
+	vhostHandler := monad.setupVHost(proxyWrapper)
 
 	bridgeHandler := monad.setupBridgeServer(vhostHandler)
 
@@ -355,7 +400,7 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 	}
 
 	if proxyHandler != nil {
-		//proxyHandler.Close() TODO - Enable when proxy gains this functionality / https://github.com/r0wbrt/advertsieve/issues/9
+		proxyHandler.Close()
 	}
 
 	return monad.err

@@ -38,6 +38,9 @@ type ProxyAgentError interface {
 
 	//HTTP error code to send.
 	ErrorCode() int
+	
+	//HTTP response to write to the client.
+	BodyMessage() string
 }
 
 type ProxyServer struct {
@@ -53,13 +56,10 @@ type ProxyServer struct {
 
 	//Logger used to handle messages generated during the operation of the proxy
 	//server.
-	MsgLogger *log.Logger
+	Logger *log.Logger
 
 	//The agent which takes a request and gets a response from the remote server
 	ProxyAgent HttpProxyAgent
-
-	//Transport used to dial TCP and http requests
-	Transport ProxyTransport
 
 	//Function that can modify the response before before it is sent to the client.
 	//This function can also handle the entire response and the function indicates this
@@ -78,10 +78,9 @@ func NewProxyServer() (proxy *ProxyServer) {
 	proxy = new(ProxyServer)
 
 	proxy.AllowWebsocket = true
-	proxy.MsgLogger = log.New(os.Stderr, "", log.Lmicroseconds|log.Ldate)
+	proxy.Logger = log.New(os.Stderr, "", log.Lmicroseconds|log.Ldate)
 
-	proxy.Transport = NewProxyServerTransport()
-	proxy.ProxyAgent = &ProxyServerAgent{Transport: proxy.Transport}
+	proxy.ProxyAgent = &ProxyServerAgent{}
 
 	proxy.ctx, proxy.shutdownFunc = context.WithCancel(context.Background())
 
@@ -160,14 +159,14 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		proxy.MsgLogger.Println("Proxy Server: Hijacking not supported by your implementation")
+		proxy.Logger.Println("Proxy Server: Hijacking not supported by your implementation")
 		panic(http.ErrAbortHandler)
 	}
 
 	toClientConn, _, err := hj.Hijack()
 
 	if err != nil {
-		proxy.MsgLogger.Printf("Proxy Server: Could not hijack client request: %s", err.Error())
+		proxy.Logger.Printf("Proxy Server: Could not hijack client request: %s", err.Error())
 		panic(http.ErrAbortHandler)
 	}
 
@@ -181,7 +180,7 @@ func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteSe
 	if writeOK {
 		_, err = toClientConn.Write([]byte("HTTP/1.1 200 OK \r\n\r\n"))
 		if err != nil {
-			proxy.MsgLogger.Printf("Proxy Server: attempting to write 200 ok to the connection failed: %s", err.Error())
+			proxy.Logger.Printf("Proxy Server: attempting to write 200 ok to the connection failed: %s", err.Error())
 			panic(http.ErrAbortHandler)
 		}
 
@@ -209,7 +208,7 @@ func (handler *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGr
 		neterr, ok := err.(net.Error)
 
 		if !ok || !neterr.Timeout() {
-			handler.MsgLogger.Printf("Proxy Server: unexpected error while piping data between two connections as part of a websocket or connect request: %s", err.Error())
+			handler.Logger.Printf("Proxy Server: unexpected error while piping data between two connections as part of a websocket or connect request: %s", err.Error())
 		}
 	}
 }
@@ -241,14 +240,14 @@ func (proxy *ProxyServer) allowRequest(r *http.Request, w http.ResponseWriter) b
 	//     		  access control operations?
 
 	if r.Method == http.MethodConnect && !proxy.AllowConnect {
-		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, "Connect is disabled")
+		proxy.Logger.Printf(logFormat, r.URL.String(), r.RemoteAddr, "Connect is disabled")
 		return false
 	}
 
 	isWebSocket := IsWebSocketRequest(r)
 
 	if isWebSocket && !proxy.AllowWebsocket {
-		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, "Websocket is disabled")
+		proxy.Logger.Printf(logFormat, r.URL.String(), r.RemoteAddr, "Websocket is disabled")
 		return false
 	}
 
@@ -263,28 +262,23 @@ func (proxy *ProxyServer) handleError(w http.ResponseWriter, err error, r *http.
 
 	var statusCode int
 	var message string
+	var bodyMessage string
 
 	custErr, ok := err.(ProxyAgentError)
 
 	if ok {
 		message = custErr.Error()
 		statusCode = custErr.ErrorCode()
+		bodyMessage = custErr.BodyMessage()
 	} else {
-		switch err {
-		case ErrBadRequest:
-			statusCode = http.StatusBadRequest
-			message = "Client sent a bad request"
-		case ErrBadGateway:
-			statusCode = http.StatusBadGateway
-		default:
-			statusCode = http.StatusInternalServerError
-			message = "Unknown error occurred: " + err.Error()
-		}
+		statusCode = http.StatusInternalServerError
+		message = "Unknown error occurred: " + err.Error()
+		bodyMessage = http.StatusText(statusCode)
 	}
 
-	http.Error(w, http.StatusText(statusCode), statusCode)
+	http.Error(w, bodyMessage, statusCode)
 
 	if message != "" {
-		proxy.MsgLogger.Printf(logFormat, r.URL.String(), r.RemoteAddr, message)
+		proxy.Logger.Printf(logFormat, r.URL.String(), r.RemoteAddr, message)
 	}
 }
