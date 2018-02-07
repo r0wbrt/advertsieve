@@ -120,6 +120,7 @@ type abpRuleEvaluator struct {
 	isThirdPartyRequest bool
 }
 
+//Runs the request against the list of filters. Returns true if the path matched a block filter.
 func (abpFilter *PathAccessControl) EvaluateRequest(host string, path string, thirdParty bool, requestType int64) (blockPath bool, err error) {
 
 	var evaluator abpRuleEvaluator
@@ -317,6 +318,7 @@ func normalizeFilterDef(s string) (pattern, options string, isExceptionFilter bo
 	return
 }
 
+//Parses filter options following the $ symbol in a rule def.
 func (filterEntry *abpFilterEntry) parseOptions(options string, isExceptionFilter bool) bool {
 	//If an unhandled modifier is found and the filter is a block filter, that
 	//rule is thrown out. Rules which can not be completely and correctly
@@ -344,21 +346,6 @@ func (filterEntry *abpFilterEntry) parseOptions(options string, isExceptionFilte
 			continue
 		}
 
-		//Regular filters first. The ones that can not be made into exception
-		//modifiers (Have ~ in front of them)
-
-		switch mod {
-		case "match-case":
-			filterEntry.matchCase = true
-			continue
-		default:
-			if !isExceptionFilter {
-				return false
-			} else {
-				continue
-			}
-		}
-
 		var isNegateModifer bool = false
 
 		//Type filters go here.
@@ -372,6 +359,15 @@ func (filterEntry *abpFilterEntry) parseOptions(options string, isExceptionFilte
 		}
 
 		switch mod {
+
+		case "match-case":
+
+			//Invalid syntax, skip this rule
+			if isNegateModifer {
+				return false
+			}
+			filterEntry.matchCase = true
+
 		case "third-party":
 			if isNegateModifer {
 				filterEntry.applyToFirstPartyOnly = true
@@ -466,7 +462,6 @@ func (abpFilter *PathAccessControl) parseFilter(s string, filterEntry *abpFilter
 	}
 
 	return
-
 }
 
 func (filter *abpFilterEntry) compileRegex(s string) (isRegexFilter bool, err error) {
