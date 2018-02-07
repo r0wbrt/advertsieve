@@ -24,6 +24,7 @@ import (
 	"strings"
 )
 
+//VirtualHost describes a single virtual website host.
 type VirtualHost struct {
 	Host                   string
 	Root                   string
@@ -31,6 +32,7 @@ type VirtualHost struct {
 	AllowDotFiles          bool
 }
 
+//VirtualHostFileServer serves a set of static websites indexed by the HTTP Host field.
 type VirtualHostFileServer struct {
 	VHosts  map[string]*VirtualHost
 	Handler http.Handler
@@ -79,6 +81,10 @@ func mapDirOpenError(originalErr error, name string) error {
 	return originalErr
 }
 
+//Open returns a file to be served to the remote client unless that file
+//is a dot file or a directory. If the file is a dot file or directory, Open
+//will only return dot files if AllowDotFiles true. Similarly, Open will
+//only return a directory if AllowDirectoryIndexing is set to true.
 func (d *VirtualHost) Open(name string) (http.File, error) {
 	if filepath.Separator != '/' && strings.ContainsRune(name, filepath.Separator) {
 		return nil, errors.New("services: invalid character in file path")

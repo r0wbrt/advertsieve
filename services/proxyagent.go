@@ -174,7 +174,7 @@ func convertToProxyRequest(r *http.Request) (*http.Request, error) {
 
 func (agent *ProxyServerAgent) openTCPTunnel(remoteAddress string, preambleWriter io.Reader, tlsConn bool, ctx context.Context) (net.Conn, error) {
 
-	conn, err := agent.getTransport().Dial(remoteAddress, tlsConn, ctx)
+	conn, err := agent.getTransport().Dial(ctx, remoteAddress, tlsConn)
 
 	if err != nil {
 		return nil, ErrBadGateway

@@ -1,4 +1,4 @@
-/* Copyright 2017 Robert Christian Taylor. All Rights Reserved
+/* Copyright 2017-2018 Robert Christian Taylor. All Rights Reserved
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import (
 
 //Return this from the InterceptResponse function to indicate the request has been handled
 //and the proxy should do no further processing.
-var ErrRequestHijacked error = errors.New("Proxy Server: The InterceptResponse function has handled the request")
+var ErrRequestHijacked = errors.New("Proxy Server: The InterceptResponse function has handled the request")
 
 //Format used to log messages.
 const logFormat = "Proxy Server: Error on path \"%s\" sent by \"%s\" : %s"
@@ -141,7 +141,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				proxy.handleError(w, err, r)
 			} else {
-				proxy.proxyTcpConnection(w, conn, !IsWebSocketRequest(r), ctx)
+				proxy.proxyTCPConnection(w, conn, !IsWebSocketRequest(r), ctx)
 			}
 		} else {
 			proxy.handleError(w, err, r)
@@ -178,7 +178,7 @@ func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, canc
 	return
 }
 
-func (proxy *ProxyServer) proxyTcpConnection(w http.ResponseWriter, fromRemoteServerConn net.Conn, writeOK bool, ctx context.Context) {
+func (proxy *ProxyServer) proxyTCPConnection(w http.ResponseWriter, fromRemoteServerConn net.Conn, writeOK bool, ctx context.Context) {
 
 	defer fromRemoteServerConn.Close()
 
