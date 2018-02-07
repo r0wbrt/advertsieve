@@ -1,4 +1,4 @@
-/* Copyright 2017 Robert Christian Taylor. All Rights Reserved
+/* Copyright 2017-2018 Robert Christian Taylor. All Rights Reserved
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,14 @@
 
 package main
 
-const CONST_VERSION = "18.01.01"
-const CONST_CONFIG_FILE_PATH = "/usr/local/etc/advertsieve/advertsieve.config"
-const CONST_BRAND_NAME = "advertsieve"
-const CONST_BUILD_TYPE = "unstable"
+//ConstVersion is the current version of adversieve.
+const ConstVersion = "18.01.01"
+
+//ConstConfigFilePath is the path to the config file used if one is not passed in
+const ConstConfigFilePath = "/usr/local/etc/advertsieve/advertsieve.config"
+
+//ConstBrandName is the branded name of the program
+const ConstBrandName = "advertsieve"
+
+//ConstBuildType represents the type of build of the final released binary.
+const ConstBuildType = "unstable"
