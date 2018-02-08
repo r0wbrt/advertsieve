@@ -27,15 +27,14 @@ import (
 	"time"
 )
 
-//Return this from the InterceptResponse function to indicate the request has been handled
+//ErrRequestHijacked should be return from InterceptResponse to indicate the request has been handled
 //and the proxy should do no further processing.
 var ErrRequestHijacked = errors.New("Proxy Server: The InterceptResponse function has handled the request")
 
 //Format used to log messages.
 const logFormat = "Proxy Server: Error on path \"%s\" sent by \"%s\" : %s"
 
-//Helper function that takes a http response and copies it to a HTTP server
-//response writer.
+//CopyBackProxyResponse pipes a http.response output to a http.ResponseWriter.
 func CopyBackProxyResponse(w http.ResponseWriter, r *http.Response) {
 
 	for k, v := range r.Header {
@@ -47,8 +46,8 @@ func CopyBackProxyResponse(w http.ResponseWriter, r *http.Response) {
 	io.Copy(w, r.Body)
 }
 
-//Format a proxy agent can return to control the
-//error response sent to the end user.
+//ProxyAgentError is a more rich error format that instructs
+//the proxy on how to represent the error message to the end user.
 type ProxyAgentError interface {
 
 	//Error to write to the log.
@@ -61,7 +60,7 @@ type ProxyAgentError interface {
 	BodyMessage() string
 }
 
-//Implements a proxy server which takes requests from a downstream client,
+//ProxyServer is a proxy server which takes requests from a downstream client,
 //proxies them to an upstream server, and then sends the response back
 //to the downstream client. Supports websocket and connect.
 type ProxyServer struct {
@@ -80,7 +79,7 @@ type ProxyServer struct {
 	Logger *log.Logger
 
 	//The agent which takes a request and gets a response from the remote server
-	ProxyAgent HttpProxyAgent
+	ProxyAgent HTTPProxyAgent
 
 	//Function that can modify the response before before it is sent to the client.
 	//This function can also handle the entire response and the function indicates this
@@ -94,7 +93,7 @@ type ProxyServer struct {
 	shutdownFunc func()
 }
 
-//Creates a new proxy server and sets up any hidden fields on ProxyServer.
+//NewProxyServer creates a proxy server.
 func NewProxyServer() (proxy *ProxyServer) {
 	proxy = new(ProxyServer)
 
@@ -108,7 +107,7 @@ func NewProxyServer() (proxy *ProxyServer) {
 	return
 }
 
-//Shutdown the server interrupting all active http transactions
+//Close shutsdown the server interrupting all active http transactions.
 func (proxy *ProxyServer) Close() error {
 	proxy.shutdownFunc()
 	return nil
@@ -141,7 +140,7 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				proxy.handleError(w, err, r)
 			} else {
-				proxy.proxyTCPConnection(w, conn, !IsWebSocketRequest(r), ctx)
+				proxy.proxyTCPConnection(ctx, w, conn, !IsWebSocketRequest(r))
 			}
 		} else {
 			proxy.handleError(w, err, r)
@@ -178,7 +177,7 @@ func shutdownReqCtx(requestctx context.Context, handlerctx context.Context, canc
 	return
 }
 
-func (proxy *ProxyServer) proxyTCPConnection(w http.ResponseWriter, fromRemoteServerConn net.Conn, writeOK bool, ctx context.Context) {
+func (proxy *ProxyServer) proxyTCPConnection(ctx context.Context, w http.ResponseWriter, fromRemoteServerConn net.Conn, writeOK bool) {
 
 	defer fromRemoteServerConn.Close()
 
@@ -217,30 +216,30 @@ func (proxy *ProxyServer) proxyTCPConnection(w http.ResponseWriter, fromRemoteSe
 	go proxy.pipeConn(toClientConn, fromRemoteServerConn, &wg) //Copy client data to server
 	go proxy.pipeConn(fromRemoteServerConn, toClientConn, &wg) //Copy server data to client
 
-	go closeConnectionOnCtxDone(toClientConn, ctx)
-	go closeConnectionOnCtxDone(fromRemoteServerConn, ctx)
+	go closeConnectionOnCtxDone(ctx, toClientConn)
+	go closeConnectionOnCtxDone(ctx, fromRemoteServerConn)
 
 	wg.Wait()
 }
 
 //Copies a net.Conn read end to a a write end.
-func (handler *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGroup) {
+func (proxy *ProxyServer) pipeConn(from net.Conn, to net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	_, err := io.Copy(to, from)
 	if err != nil {
 
-		//Suppress error logging from TCP connections closes
+		//Suppress error logging when a TCP connection closes
 		neterr, ok := err.(net.Error)
 
 		if !ok || !neterr.Timeout() {
-			handler.Logger.Printf("Proxy Server: unexpected error while piping data between two connections as part of a websocket or connect request: %s", err.Error())
+			proxy.Logger.Printf("Proxy Server: unexpected error while piping data between two connections as part of a websocket or connect request: %s", err.Error())
 		}
 	}
 }
 
 //Closes a TCP connection if the context is closed.
-func closeConnectionOnCtxDone(conn net.Conn, ctx context.Context) {
+func closeConnectionOnCtxDone(ctx context.Context, conn net.Conn) {
 	select {
 	case <-ctx.Done():
 	}
