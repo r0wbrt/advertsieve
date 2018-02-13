@@ -126,11 +126,16 @@ func (sTrans *ProxyServerTransport) RoundTrip(rsr *http.Request) (*http.Response
 
 		now := time.Now()
 
-		if sTrans.MaxTimeTryingToConnect != 0 && now.Sub(start) >= sTrans.MaxTimeTryingToConnect {
+		if sTrans.MaxTimeTryingToConnect > 0 && now.Sub(start) >= sTrans.MaxTimeTryingToConnect {
 			return nil, err
 		}
 
-		if sTrans.MaxNumberOfConnectAttempts != 0 && counter >= sTrans.MaxNumberOfConnectAttempts {
+		if sTrans.MaxNumberOfConnectAttempts > 0 && counter >= sTrans.MaxNumberOfConnectAttempts {
+			return nil, err
+		}
+
+		//Prevent infinite loop
+		if sTrans.MaxNumberOfConnectAttempts <= 0 && sTrans.MaxTimeTryingToConnect <= 0 {
 			return nil, err
 		}
 
