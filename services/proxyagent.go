@@ -40,33 +40,40 @@ var ErrBadRequest ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgen
 //ErrBadGateway means the remote host could not be reached
 var ErrBadGateway ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Request could not be completed since the upstream server could not be reached", errorCode: http.StatusBadGateway, bodyMessage: http.StatusText(http.StatusBadGateway)}
 
+//HTTPProxyAgent is the interface used by the proxy server to make HTTP Connect and HTTP Requests.
 type HTTPProxyAgent interface {
 	Connect(*http.Request) (net.Conn, error)
 	RoundTrip(*http.Request) (*http.Response, error)
 }
 
+//ProxyServerAgent is the default implementation of HTTPProxyAgent for ProxyServer.
 type ProxyServerAgent struct {
 	Transport ProxyTransport
 }
 
-var defaultTransport ProxyTransport = NewProxyServerTransport()
-var defaultProxyAgent *ProxyServerAgent = &ProxyServerAgent{Transport: NewProxyServerTransport()}
+var defaultTransport = NewProxyServerTransport()
+var defaultProxyAgent = &ProxyServerAgent{Transport: NewProxyServerTransport()}
 
+//Connect takes a HTTP Connect of HTTP Web Socket request and opens a
+//remote connection to the host sending any extra data needed to set up the connection.
 func Connect(r *http.Request) (net.Conn, error) {
 	return defaultProxyAgent.Connect(r)
 }
 
+//RoundTrip sends a request to the remote server and gets back the response.
 func RoundTrip(r *http.Request) (*http.Response, error) {
 	return defaultProxyAgent.RoundTrip(r)
 }
 
+//Connect takes a HTTP Connect or HTTP Web Socket request and opens a remote connection to
+//the host sending any extra data needed to set up the connection.
 func (agent *ProxyServerAgent) Connect(r *http.Request) (net.Conn, error) {
 
 	if !requiresConnect(r) {
 		return nil, ErrUseRoundTrip
 	}
 
-	reqtosend, err := convertToProxyRequest(r)
+	requestToSend, err := convertToProxyRequest(r)
 
 	if err != nil {
 		return nil, err
@@ -78,40 +85,41 @@ func (agent *ProxyServerAgent) Connect(r *http.Request) (net.Conn, error) {
 		var buf bytes.Buffer
 		var tls = false
 
-		reqtosend.Write(&buf)
+		requestToSend.Write(&buf)
 
-		tls = reqtosend.URL.Scheme == "https"
+		tls = requestToSend.URL.Scheme == "https"
 
-		host := reqtosend.Host
-		if reqtosend.URL.Port() == "" {
-			if reqtosend.URL.Scheme == "https" {
+		host := requestToSend.Host
+		if requestToSend.URL.Port() == "" {
+			if requestToSend.URL.Scheme == "https" {
 				host = host + ":443"
 			} else {
 				host = host + ":80"
 			}
 		}
 
-		conn, err = agent.openTCPTunnel(host, &buf, tls, reqtosend.Context())
+		conn, err = agent.openTCPTunnel(requestToSend.Context(), host, &buf, tls)
 	} else {
-		conn, err = agent.openTCPTunnel(reqtosend.Host, nil, false, reqtosend.Context())
+		conn, err = agent.openTCPTunnel(requestToSend.Context(), requestToSend.Host, nil, false)
 	}
 
 	return conn, err
 }
 
+//RoundTrip sends a request to the remote server and gets back the response.
 func (agent *ProxyServerAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	if requiresConnect(r) {
 		return nil, ErrUseConnect
 	}
 
-	reqtosend, err := convertToProxyRequest(r)
+	requestToSend, err := convertToProxyRequest(r)
 
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := agent.getTransport().RoundTrip(reqtosend)
+	resp, err := agent.getTransport().RoundTrip(requestToSend)
 
 	if err != nil {
 		return nil, err
@@ -179,7 +187,7 @@ func convertToProxyRequest(r *http.Request) (*http.Request, error) {
 	return newRequest, nil
 }
 
-func (agent *ProxyServerAgent) openTCPTunnel(remoteAddress string, preambleWriter io.Reader, tlsConn bool, ctx context.Context) (net.Conn, error) {
+func (agent *ProxyServerAgent) openTCPTunnel(ctx context.Context, remoteAddress string, preambleWriter io.Reader, tlsConn bool) (net.Conn, error) {
 
 	conn, err := agent.getTransport().Dial(ctx, remoteAddress, tlsConn)
 

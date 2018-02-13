@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-//Configuration structure that detects http proxy loops by
+//DetectHTTPLoop Configuration structure. DetectHTTPLoop detects http proxy loops by
 //checking and adding via headers to incoming http requests.
 type DetectHTTPLoop struct {
 
@@ -35,7 +35,7 @@ type DetectHTTPLoop struct {
 
 	//The next handler to run after this one assuming the
 	//incoming request does not have a via header with the Hostname
-	//contained in it. THe next handler will recieve request with
+	//contained in it. THe next handler will receive request with
 	//the via header added to it.
 	Next http.Handler
 }
@@ -64,20 +64,20 @@ func (config *DetectHTTPLoop) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-//Handler that will do some basic sanity checks to prevent a remote client
+//PreventConnectionsToLocalhost that will do some basic sanity checks to prevent a remote client
 //from attempting to access the server with a host field that redirects
 //to localhost.
 //
 //Checks if host is localhost or a loopback address. Does not do a DNS
 //lookup on the address because of https://github.com/r0wbrt/advertsieve/issues/21.
 type PreventConnectionsToLocalhost struct {
-	Next http.Handler //Nexy handler to run if this check passes.
+	Next http.Handler //Next handler to run if this check passes.
 }
 
 //HTTP handler used to reject http requests that circle back to the host.
 func (config *PreventConnectionsToLocalhost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var host string = r.Host
-	var ip net.IP = net.ParseIP(host)
+	var host = r.Host
+	var ip = net.ParseIP(host)
 
 	//Originally was doing a DNS lookup on all hostnames to see if they resolved
 	//to localhost. Ended up deprecating this approach since it resulted in
@@ -100,13 +100,13 @@ func exponentialBackoffPause(setPause time.Duration, baseDuration time.Duration,
 	//Algorithm based on the one used by ethernet following a collision.
 
 	var maxNumber int64 = (1 << uint(kthTry)) - 1 // 2^c - 1
-	var multiplier int64 = rand.Int63n(maxNumber)
-	var waitDuration time.Duration = time.Duration(multiplier) * baseDuration
+	var multiplier = rand.Int63n(maxNumber)
+	var waitDuration = time.Duration(multiplier) * baseDuration
 
 	time.Sleep(setPause + waitDuration)
 }
 
-//Removes the body from requests that should not have one. If this is not
+//RemoveBodyFromRequest removes the body from requests that should not have one. If this is not
 //done, certain upstream CDN will throw an error.
 func RemoveBodyFromRequest(rsr *http.Request) {
 
@@ -150,6 +150,8 @@ var hopHeaders = []string{
 	"Upgrade",
 }
 
+//RemoveHopByHopHeaders takes a list of headers and removes any headers
+//that should not be forwarded by the proxy.
 func RemoveHopByHopHeaders(header *http.Header) {
 	// Remove hop-by-hop headers listed in the "Connection" header.
 	// See RFC 2616, section 14.10.
@@ -171,7 +173,7 @@ func RemoveHopByHopHeaders(header *http.Header) {
 	}
 }
 
-//Returns a TLS config with some settings modified to make it
+//SecureTLSConfig returns a TLS config with some settings modified to make it
 //more secure.
 func SecureTLSConfig() (tlsConfig *tls.Config) {
 
@@ -183,7 +185,7 @@ func SecureTLSConfig() (tlsConfig *tls.Config) {
 	return tlsConfig
 }
 
-//Helper function to determine if a request is a websocket upgrade request.
+//IsWebSocketRequest determines if a request is a websocket upgrade request.
 func IsWebSocketRequest(r *http.Request) bool {
 	upgradeType := r.Header.Get("Upgrade")
 

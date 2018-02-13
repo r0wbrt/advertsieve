@@ -178,7 +178,7 @@ func (bridge *ConnectLoopBackBridge) Accept() (conn net.Conn, err error) {
 	return
 }
 
-//Close shutsdown the bridge. Any subsequent recieved http requests are aborted.
+//Close shutsdown the bridge. Any subsequent received http requests are aborted.
 func (bridge *ConnectLoopBackBridge) Close() error {
 	bridge.mutex.Lock()
 	defer bridge.mutex.Unlock()
