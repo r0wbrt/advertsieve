@@ -171,9 +171,9 @@ func (config *AdvertSieveConfig) mapPort(r *http.Request) int {
 func returnPortRuleResponse(rule ConnectAccessControl) int {
 	switch rule.Server {
 	case config.ConnectTypeHttps:
-		return services.HttpsConnectBridge
+		return services.HTTPSConnectBridge
 	case config.ConnectTypeHttp:
-		return services.HttpConnectBridge
+		return services.HTTPConnectBridge
 	default:
 		return services.DenyConnect
 	}

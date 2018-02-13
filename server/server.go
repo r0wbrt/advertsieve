@@ -354,7 +354,7 @@ func (server *AdvertsieveServer) ListenAndServe() error {
 			go monad.httpServerGo(httpMainServer, bridgeHandler, true)
 		}
 
-		go monad.httpServerGo(httpMainServer, bridgeHandler.GetHttpListener(), false)
+		go monad.httpServerGo(httpMainServer, bridgeHandler.GetHTTPListener(), false)
 
 		select {
 		case <-server.endServer:
