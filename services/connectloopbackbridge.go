@@ -24,12 +24,17 @@ import (
 	"sync"
 )
 
+//Set up enums used to control access into the bridge.
 const (
-	HttpConnectBridge = iota
-	HttpsConnectBridge
+	HTTPConnectBridge = iota
+	HTTPSConnectBridge
 	DenyConnect
 )
 
+//ConnectLoopBackBridge is a HTTP termination proxy that forwards all regular HTTP requests
+//to Handler. For CONNECT, and upgrade requests, Bridge hijacks the http requests to get the
+//underlying connection and exposes the connection to consuming code via the net.Listener interface.
+//Routes HTTPS requests to one listener interface and standard HTTP requests to another.
 type ConnectLoopBackBridge struct {
 	//Handler to forward http requests not using the forward method.
 	Handler http.Handler
@@ -64,6 +69,7 @@ type ConnectLoopBackBridge struct {
 	Logger *log.Logger
 }
 
+//NewConnectLoopBackBridge sets up a loopback bridge.
 func NewConnectLoopBackBridge(handler http.Handler, address string) (bridge *ConnectLoopBackBridge) {
 
 	bridge = new(ConnectLoopBackBridge)
@@ -100,7 +106,7 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 			return
 		}
 
-		var connChannel chan net.Conn = nil
+		var connChannel chan net.Conn
 		var res int
 
 		if bridge.PortMapper != nil {
@@ -110,9 +116,9 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 		}
 
 		switch res {
-		case HttpConnectBridge:
+		case HTTPConnectBridge:
 			connChannel = bridge.httpConnChannel
-		case HttpsConnectBridge:
+		case HTTPSConnectBridge:
 			connChannel = bridge.httpsConnChannel
 		case DenyConnect:
 			http.Error(w, "CONNECT request is denied.", http.StatusForbidden)
@@ -152,25 +158,27 @@ func (bridge *ConnectLoopBackBridge) ServeHTTP(w http.ResponseWriter, r *http.Re
 
 func defaultPortMapper(r *http.Request) int {
 	if r.URL.Port() == "80" {
-		return HttpConnectBridge
+		return HTTPConnectBridge
 	} else if r.URL.Port() == "443" {
-		return HttpsConnectBridge
+		return HTTPSConnectBridge
 	} else {
 		return DenyConnect
 	}
 }
 
+//Accept returns a hijacked connection that should be handled by an HTTPS server.
 func (bridge *ConnectLoopBackBridge) Accept() (conn net.Conn, err error) {
 	select {
 	case conn = <-bridge.httpsConnChannel:
 
 	case _ = <-bridge.done:
-		err = errors.New("No longer accepting new connections.")
+		err = errors.New("connectLoopBackBridge: No longer accepting new connections")
 	}
 
 	return
 }
 
+//Close shutsdown the bridge. Any subsequent recieved http requests are aborted.
 func (bridge *ConnectLoopBackBridge) Close() error {
 	bridge.mutex.Lock()
 	defer bridge.mutex.Unlock()
@@ -197,6 +205,8 @@ func (addr proxyBridgeAdd) String() string {
 	return addr.addr
 }
 
+//Addr returns the address the bridge is listening on. For consistency,
+//this should match whatever the HTTP server hosting the bridge is listening on.
 func (bridge *ConnectLoopBackBridge) Addr() net.Addr {
 	return proxyBridgeAdd{addr: bridge.Address}
 }
@@ -205,7 +215,9 @@ type httpListener struct {
 	bridge *ConnectLoopBackBridge
 }
 
-func (bridge *ConnectLoopBackBridge) GetHttpListener() net.Listener {
+//GetHTTPListener returns the connections that should be passed to
+//a standard http server for further processing.
+func (bridge *ConnectLoopBackBridge) GetHTTPListener() net.Listener {
 	return &httpListener{bridge: bridge}
 }
 
@@ -214,7 +226,7 @@ func (l *httpListener) Accept() (conn net.Conn, err error) {
 	case conn = <-l.bridge.httpConnChannel:
 
 	case _ = <-l.bridge.done:
-		err = errors.New("No longer accepting new connections.")
+		err = errors.New("connectLoopBackBridge: No longer accepting new connections")
 	}
 
 	return
