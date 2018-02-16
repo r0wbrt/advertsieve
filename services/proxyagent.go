@@ -40,19 +40,17 @@ var ErrBadRequest ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgen
 //ErrBadGateway means the remote host could not be reached
 var ErrBadGateway ProxyAgentError = &proxyAgentError{errorString: "HttpProxyAgent: Request could not be completed since the upstream server could not be reached", errorCode: http.StatusBadGateway, bodyMessage: http.StatusText(http.StatusBadGateway)}
 
-//HTTPProxyAgent is the interface used by the proxy server to make HTTP Connect and HTTP Requests.
-type HTTPProxyAgent interface {
-	Connect(*http.Request) (net.Conn, error)
-	RoundTrip(*http.Request) (*http.Response, error)
-}
-
 //ProxyServerAgent is the default implementation of HTTPProxyAgent for ProxyServer.
 type ProxyServerAgent struct {
-	Transport ProxyTransport
+	//Dials a connection
+	Dial func(ctx context.Context, host string, tls bool) (net.Conn, error)
+
+	//RoundTrip Sends the input request to the remote server and gets a response.
+	RoundTrip func(request *http.Request) (*http.Response, error)
 }
 
 var defaultTransport = NewProxyServerTransport()
-var defaultProxyAgent = &ProxyServerAgent{Transport: NewProxyServerTransport()}
+var defaultProxyAgent = &ProxyServerAgent{RoundTrip: defaultTransport.RoundTrip, Dial: defaultTransport.Dial}
 
 //Connect takes a HTTP Connect of HTTP Web Socket request and opens a
 //remote connection to the host sending any extra data needed to set up the connection.
@@ -60,8 +58,8 @@ func Connect(r *http.Request) (net.Conn, error) {
 	return defaultProxyAgent.Connect(r)
 }
 
-//RoundTrip sends a request to the remote server and gets back the response.
-func RoundTrip(r *http.Request) (*http.Response, error) {
+//ProxyHTTPRequest sends a request to the remote server and gets back the response.
+func ProxyHTTPRequest(r *http.Request) (*http.Response, error) {
 	return defaultProxyAgent.RoundTrip(r)
 }
 
@@ -106,8 +104,8 @@ func (agent *ProxyServerAgent) Connect(r *http.Request) (net.Conn, error) {
 	return conn, err
 }
 
-//RoundTrip sends a request to the remote server and gets back the response.
-func (agent *ProxyServerAgent) RoundTrip(r *http.Request) (*http.Response, error) {
+//ProxyHTTPRequest sends a request to the remote server and gets back the response.
+func (agent *ProxyServerAgent) ProxyHTTPRequest(r *http.Request) (*http.Response, error) {
 
 	if requiresConnect(r) {
 		return nil, ErrUseConnect
@@ -119,7 +117,7 @@ func (agent *ProxyServerAgent) RoundTrip(r *http.Request) (*http.Response, error
 		return nil, err
 	}
 
-	resp, err := agent.getTransport().RoundTrip(requestToSend)
+	resp, err := agent.getRoundTrip()(requestToSend)
 
 	if err != nil {
 		return nil, err
@@ -128,12 +126,20 @@ func (agent *ProxyServerAgent) RoundTrip(r *http.Request) (*http.Response, error
 	return resp, nil
 }
 
-func (agent *ProxyServerAgent) getTransport() ProxyTransport {
-	if !reflect.ValueOf(agent.Transport).IsValid() {
-		return defaultTransport
+func (agent *ProxyServerAgent) getRoundTrip() func(request *http.Request) (*http.Response, error) {
+	if !reflect.ValueOf(agent.RoundTrip).IsValid() {
+		return defaultTransport.RoundTrip
 	}
 
-	return agent.Transport
+	return agent.RoundTrip
+}
+
+func (agent *ProxyServerAgent) getDial() func(ctx context.Context, host string, tls bool) (net.Conn, error) {
+	if !reflect.ValueOf(agent.RoundTrip).IsValid() {
+		return defaultTransport.Dial
+	}
+
+	return agent.Dial
 }
 
 func convertToProxyRequest(r *http.Request) (*http.Request, error) {
@@ -189,7 +195,7 @@ func convertToProxyRequest(r *http.Request) (*http.Request, error) {
 
 func (agent *ProxyServerAgent) openTCPTunnel(ctx context.Context, remoteAddress string, preambleWriter io.Reader, tlsConn bool) (net.Conn, error) {
 
-	conn, err := agent.getTransport().Dial(ctx, remoteAddress, tlsConn)
+	conn, err := agent.getDial()(ctx, remoteAddress, tlsConn)
 
 	if err != nil {
 		return nil, ErrBadGateway

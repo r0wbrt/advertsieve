@@ -23,19 +23,8 @@ import (
 	"time"
 )
 
-//ProxyTransport is used by ProxyServerAgent to open TCP connections and issue HTTP(s)
-//requests and get back the associated response.
-type ProxyTransport interface {
-
-	//Dials a connection
-	Dial(ctx context.Context, host string, tls bool) (net.Conn, error)
-
-	//Handles a http request.
-	RoundTrip(request *http.Request) (*http.Response, error)
-}
-
-//ProxyServerTransport is an implementation of ProxyTransport featuring exponential backoff. It is the
-//default implementation used by ProxyServerAgent.
+//ProxyServerTransport provides functionality to send HTTP requests and open TCP connections using
+//exponential backoff.
 type ProxyServerTransport struct {
 
 	//Round Tripper used to make HTTP requests. By default this is set to

@@ -78,8 +78,12 @@ type ProxyServer struct {
 	//server.
 	Logger *log.Logger
 
-	//The agent which takes a request and gets a response from the remote server
-	ProxyAgent HTTPProxyAgent
+	//Connect takes a request and opens a TCP connection to the remote server.
+	Connect func(r *http.Request) (net.Conn, error)
+
+	//ProxyHTTPRequest takes a client request, processes it into an upstream request, sends the request
+	//to the remote server and get back a response.
+	ProxyHTTPRequest func(*http.Request) (*http.Response, error)
 
 	//Function that can modify the response before before it is sent to the client.
 	//This function can also handle the entire response and the function indicates this
@@ -100,7 +104,10 @@ func NewProxyServer() (proxy *ProxyServer) {
 	proxy.AllowWebsocket = true
 	proxy.Logger = log.New(os.Stderr, "", log.Lmicroseconds|log.Ldate)
 
-	proxy.ProxyAgent = &ProxyServerAgent{}
+	proxyAgent := &ProxyServerAgent{}
+
+	proxy.Connect = proxyAgent.Connect
+	proxy.ProxyHTTPRequest = proxyAgent.ProxyHTTPRequest
 
 	proxy.ctx, proxy.shutdownFunc = context.WithCancel(context.Background())
 
@@ -132,11 +139,11 @@ func (proxy *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go shutdownReqCtx(r.Context(), ctx, cancel)
 
-	resp, err := proxy.ProxyAgent.RoundTrip(r)
+	resp, err := proxy.ProxyHTTPRequest(r)
 
 	if err != nil {
 		if err == ErrUseConnect {
-			conn, err := proxy.ProxyAgent.Connect(r)
+			conn, err := proxy.Connect(r)
 			if err != nil {
 				proxy.handleError(w, err, r)
 			} else {
