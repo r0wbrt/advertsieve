@@ -24,7 +24,7 @@ import (
 )
 
 type ContentPolicyServerHook struct {
-	
+
 	//When set to true, requests with no refer are still filtered. Set this to true
 	//if you want to use this server for content filtering. Eg: parental controls.
 	FilterOnReferFreeRequests bool
@@ -36,32 +36,32 @@ type ContentPolicyServerHook struct {
 }
 
 func (instance *ContentPolicyServerHook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	
+
 	requestBlocked, err := instance.IsRequestBlocked(r, nil)
-	
+
 	if err != nil {
 		panic(err)
 	}
-	
+
 	if requestBlocked {
 		PassiveAggressiveBlockRequest(w)
 	}
 }
 
 func (instance *ContentPolicyServerHook) InterceptResponse(w http.ResponseWriter, resp *http.Response) error {
-	
+
 	requestBlocked, err := instance.IsRequestBlocked(resp.Request, resp)
-	
+
 	if err != nil {
 		panic(err)
 	}
-	
+
 	if requestBlocked {
 		PassiveAggressiveBlockRequest(w)
 		return services.ErrRequestHijacked
 	}
-	
-	return nil	
+
+	return nil
 }
 
 func (instance *ContentPolicyServerHook) IsRequestBlocked(clientRequest *http.Request, remoteResponse *http.Response) (bool, error) {
@@ -71,10 +71,10 @@ func (instance *ContentPolicyServerHook) IsRequestBlocked(clientRequest *http.Re
 	if !ok {
 		return false, nil
 	}
-	
+
 	if instance.HostAccessControl != nil {
 		var requestHost string = GetRequestHost(clientRequest)
-		
+
 		//Block the host if AllowHost returns false
 		if !instance.HostAccessControl.AllowHost(requestHost) {
 			return true, nil
@@ -94,7 +94,7 @@ func (instance *ContentPolicyServerHook) IsRequestBlocked(clientRequest *http.Re
 
 		//Don't block HTML and plain text pages to match Ad Block Plus behavior
 		if requestTypeBitMap&ContentTypeDoNotBlock == ContentTypeDoNotBlock {
-			return
+			return false, nil
 		}
 
 		var block bool
