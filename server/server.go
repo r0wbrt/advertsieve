@@ -86,49 +86,6 @@ func (monad *errorMonad) loadContentPolicy() (postAccessControlHook *contentpoli
 	return postAccessControlHook
 }
 
-/*func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
-
-	if monad.inErrorState() {
-		return nil
-	}
-
-	var proxyServer *services.ProxyServer = services.NewProxyServer()
-	proxyServer.AllowWebsocket = true
-	proxyServer.MsgLogger = monad.server.getLogger()
-
-	var beforeIssueUpstreamRequest func(context services.ProxyRequest) error = nil
-
-	preAccessControlHook, postAccessControlHook := monad.loadContentPolicy()
-
-	//Need to guard against a null ref exception
-	if monad.inErrorState() {
-		return nil
-	}
-
-	preAccessControlHook.Next = beforeIssueUpstreamRequest
-	beforeIssueUpstreamRequest = preAccessControlHook.Hook
-
-	if !monad.server.Config.DisableHttpLoopDetection {
-
-		if len(monad.server.Config.ServerName) <= 0 {
-			monad.err = errors.New("Must defined advertsieve server name using directive " + config.ServerHostnameStatement.Name + " when loop detection is active.")
-			return nil
-		}
-
-		loopDetecter := services.DetectHTTPLoop{Hostname: monad.server.Config.ServerName, Next: beforeIssueUpstreamRequest}
-		beforeIssueUpstreamRequest = loopDetecter.Hook
-	}
-
-	if !monad.server.Config.AllowConnectionsToLocalhost {
-		hook := services.PreventConnectionsToLocalhost { Next: beforeIssueUpstreamRequest}
-		beforeIssueUpstreamRequest = hook.Hook
-	}
-
-	proxyServer.GetProxyRequestAgent = services.NewProxyAgentWithHandlers(beforeIssueUpstreamRequest, postAccessControlHook.Hook)
-
-	return proxyServer
-}*/
-
 func (monad *errorMonad) setupProxyServer() *services.ProxyServer {
 
 	if monad.inErrorState() {
@@ -248,24 +205,6 @@ func (monad *errorMonad) setupHttpServers(mainHandle http.Handler, auxHandler ht
 
 	if config.CertificatePath != "" && config.PrivateKeyPath != "" {
 
-		//Tests seem to indicate caching the result of the computation to be
-		//server about 2 times faster. Leaving this here for now until this is
-		//determined experimentally via performance testing.
-		/*if config.EnableTurboTlsMode {
-
-			gen, err := SetupTlsCertGen(monad.server.Config.CertificatePath, monad.server.Config.PrivateKeyPath, true)
-			if err != nil {
-				monad.err = err
-				return nil, nil
-			}
-
-			tlsConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
-				return gen.GetCertificate(hello)
-			}
-
-			monad.server.tlsSetup = true
-
-		} else {*/
 		database, err := SetupTlsCertGenDatabase(monad.server.Config.CertificatePath, monad.server.Config.PrivateKeyPath, config.EnableTurboTlsMode)
 		if err != nil {
 			monad.err = err
@@ -277,7 +216,6 @@ func (monad *errorMonad) setupHttpServers(mainHandle http.Handler, auxHandler ht
 		}
 
 		monad.server.tlsSetup = true
-		//	}
 	}
 
 	tlsConfig.NameToCertificate = monad.getVHostCerts()
