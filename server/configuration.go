@@ -67,6 +67,13 @@ type AdvertSieveConfig struct {
 	ConnectAccessControl []ConnectAccessControl
 
 	EnableDevelopmentMode bool
+
+	//Flag which when set to true enables turbo tls mode.
+	//When this mode is active, all generated certificates
+	//share the same public and private key. The
+	//net effect is a large reduction in CPU usage as
+	//generating a public private key pair is expansive.
+	EnableTurboTlsMode bool
 }
 
 func ReadInHostAclFile(path string, hostAcl *contentpolicy.HostAccessControl) error {
@@ -204,6 +211,9 @@ func ReadConfigurationInFromFile(path string) (*AdvertSieveConfig, error) {
 			vals := configResults.ParsedResult[i]
 
 			switch k {
+
+			case config.EnableTurboTlsMode.Name:
+				configuration.EnableTurboTlsMode = vals[0].(bool)
 
 			case config.EnableDevelopmentMode.Name:
 				configuration.EnableDevelopmentMode = vals[0].(bool)

@@ -91,6 +91,12 @@ func (instance *ContentPolicyServerHook) IsRequestBlocked(clientRequest *http.Re
 		var requestTypeBitMap int64 = SniffRequestType(clientRequest, remoteResponse)
 		var isThirdParty bool = IsThirdParty(clientRequest)
 		var path string = GetRequestPath(clientRequest)
+
+		//Don't block HTML and plain text pages to match Ad Block Plus behavior
+		if requestTypeBitMap&ContentTypeDoNotBlock == ContentTypeDoNotBlock {
+			return
+		}
+
 		var block bool
 
 		block, err := instance.PathAccessControl.EvaluateRequest(filterHost, path, isThirdParty, requestTypeBitMap)
@@ -201,6 +207,8 @@ func mimeStringToType(mimeType string) int64 {
 		return ContentTypeScript
 	case "text/css":
 		return ContentTypeStylesheet
+	case "text/html", "text/plain":
+		return ContentTypeDoNotBlock
 	default:
 		return ContentTypeOther
 	}

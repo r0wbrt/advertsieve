@@ -16,7 +16,7 @@
 package main
 
 //ConstVersion is the current version of adversieve.
-const ConstVersion = "18.01.01"
+const ConstVersion = "18.02.05"
 
 //ConstConfigFilePath is the path to the config file used if one is not passed in
 const ConstConfigFilePath = "/usr/local/etc/advertsieve/advertsieve.config"

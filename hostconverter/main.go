@@ -20,7 +20,7 @@ import (
 	"strings"
 	"bufio"
 	"fmt"
-)
+) 
 
 func main() {
 	hostFile := strings.Join(os.Args[1:], " ")

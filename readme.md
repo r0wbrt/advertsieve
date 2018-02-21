@@ -86,10 +86,9 @@ Sets the certificate of a static site. By default the https cert for static site
 The server supports path based blocking using Adblockplus rules. Naturally,
 a subset of these rules are supported since some of these rules use css 
 element hiding or rely on knowing which element the request came from. The 
-proxy server includes a heuristics used to guess the type of element the 
-request came from. 
+proxy server includes heuristics used to guess the type of element the request came from. 
 
-Note, the path based ACL is disabled when accessing a path without a refer. The
+Note, the path based ACL is disabled when accessing a path without a "referer" header. The
 intention of this is to mimic how Adblockplus works. Eg, if you write a rule that
 blocks all js files and then navigate to that file directly, you will still be able
 to download that file.
@@ -114,7 +113,7 @@ example.com
 ```
 
 Note, host based blocking is active whether or not the site is accessed with or 
-without a refer.
+without a referer.
 
 ## Versioning 
 

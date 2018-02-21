@@ -115,6 +115,15 @@ var EnableDevelopmentMode ConfigStatement = ConfigStatement{
 	Syntax:        []Lexeme{OnOffLexeme},
 }
 
+//Configuration option that forces all generated certificates to share the same
+//public and private key. Reduces the load on the CPU since generating a
+//public/private key pair is expensive.
+var EnableTurboTlsMode ConfigStatement = ConfigStatement{
+	Name:          "turbotls",
+	AllowMultiple: false,
+	Syntax:        []Lexeme{OnOffLexeme},
+}
+
 func IPLexeme(input []rune) (ip interface{}, unconsumedInput []rune, err error) {
 	ip, unconsumedInput, err = ConsumeIP(input)
 
@@ -255,6 +264,7 @@ func GetProxyGrammar() (grammar *Grammar) {
 		ServerHostnameStatement,
 		ConnectACLStatement,
 		EnableDevelopmentMode,
+		EnableTurboTlsMode,
 	}
 
 	for i := 0; i < len(proxyTokens); i++ {

@@ -29,6 +29,7 @@ const (
 	ContentTypeXMLHTTPRequest
 	ContentTypeWebSocket
 	ContentTypeOther
+	ContentTypeDoNotBlock
 )
 
 type abpFilterEntry struct {
@@ -153,6 +154,7 @@ func (abpFilter *PathAccessControl) EvaluateRequest(host string, path string, th
 	for i := 0; i < len(abpFilter.nonMappedBlockFilters); i++ {
 		if evaluator.evaluateABRule(abpFilter.nonMappedBlockFilters[i]) {
 			blockPath = true
+			//	fmt.Println(path, " ", abpFilter.nonMappedBlockFilters[i].regex.String())
 			return
 		}
 	}
@@ -214,6 +216,13 @@ func (pathInfo *abpRuleEvaluator) evaluateABRule(filterEntry *abpFilterEntry) bo
 	} else if !filterEntry.applyToHostsEmpty && hostCheckResult != -1 {
 		return false
 	}
+
+	//Uncomment this code and build to debug filtering problems
+	/*res := filterEntry.regex.MatchString(pathInfo.path)
+
+	if res {
+		fmt.Println(pathInfo.path, " ", filterEntry.regex.String())
+	}*/
 
 	//Finally perform the regex comparison and return that result
 	return filterEntry.regex.MatchString(pathInfo.path)
