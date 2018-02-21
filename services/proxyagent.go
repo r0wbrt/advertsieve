@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"reflect"
 )
 
 type proxyAgentError struct {
@@ -127,7 +126,7 @@ func (agent *ProxyServerAgent) ProxyHTTPRequest(r *http.Request) (*http.Response
 }
 
 func (agent *ProxyServerAgent) getRoundTrip() func(request *http.Request) (*http.Response, error) {
-	if !reflect.ValueOf(agent.RoundTrip).IsValid() {
+	if agent.RoundTrip == nil {
 		return defaultTransport.RoundTrip
 	}
 
@@ -135,7 +134,7 @@ func (agent *ProxyServerAgent) getRoundTrip() func(request *http.Request) (*http
 }
 
 func (agent *ProxyServerAgent) getDial() func(ctx context.Context, host string, tls bool) (net.Conn, error) {
-	if !reflect.ValueOf(agent.RoundTrip).IsValid() {
+	if agent.RoundTrip == nil {
 		return defaultTransport.Dial
 	}
 
